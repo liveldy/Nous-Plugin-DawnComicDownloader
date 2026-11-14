@@ -512,6 +512,14 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .fields .inline { display: flex; align-items: center; gap: 8px; }
 .fields .inline input { flex: 1 1 auto; min-width: 0; }
 .fields .inline.span { grid-column: 1 / -1; }
+.fields select {
+  height: 38px; padding: 0 10px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--surface); color: var(--ink);
+  font: 400 14px/1 var(--sans);
+}
+.fields select:focus { outline: none; border-color: var(--ink); }
+
 .fields input {
   height: 38px; padding: 0 12px;
   border: 1px solid var(--line); border-radius: var(--r);
@@ -710,3 +718,15 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .favcard .by strong { display: block; font-weight: 500; color: var(--ink); }
 .favcard .by span { color: var(--muted); font-size: 11.5px; }
+
+.cover-tools { position: absolute; right: 6px; bottom: 8px; z-index: 2; display: flex; gap: 4px; }
+.cover-tools .tool {
+  width: 26px; height: 26px; display: grid; place-items: center;
+  border: 0; border-radius: 2px; cursor: pointer;
+  background: rgba(12, 10, 9, .66); color: #f6f1e8;
+  opacity: 0; transform: translateY(2px);
+  transition: opacity .16s var(--ease), transform .16s var(--ease), background .16s var(--ease);
+}
+.cover-tools .tool svg { width: 13px; height: 13px; }
+.card-wrap:hover .cover-tools .tool, .cover-tools .tool:focus-visible { opacity: 1; transform: none; }
+.cover-tools .tool:hover { background: var(--accent-fill); }

@@ -121,7 +121,7 @@
     results: {},
     queue: [],
     scanning: false,
-    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '', perSource: 20, pixivCookie: '' },
+    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '', perSource: 20, pixivCookie: '', videoQuality: 'best' },
     disabled: {},
     filter: null,
     kind: null,
@@ -338,19 +338,28 @@
     });
     wrap.appendChild(mark);
     if ((App.fav.folders || []).some(function (f) { return favHas(f.id, item.uid); })) mark.dataset.saved = 'true';
+    var tools = document.createElement('div');
+    tools.className = 'cover-tools';
+    var openBtn = document.createElement('button');
+    openBtn.type = 'button';
+    openBtn.className = 'tool';
+    openBtn.title = '在浏览器打开';
+    openBtn.setAttribute('aria-label', '在浏览器打开');
+    openBtn.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 5h5v5M19 5l-8 8M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    openBtn.addEventListener('click', function (e) { e.stopPropagation(); openInBrowser(item); });
+    tools.appendChild(openBtn);
     if (item.cover) {
       var save = document.createElement('button');
       save.type = 'button';
-      save.className = 'cover-save';
+      save.className = 'tool';
       save.title = '保存封面';
       save.setAttribute('aria-label', '保存封面');
       save.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10m-4-4 4 4 4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
       save.addEventListener('click', function (e) { e.stopPropagation(); saveCover(item); });
-      wrap.appendChild(card);
-      wrap.appendChild(save);
-      return wrap;
+      tools.appendChild(save);
     }
     wrap.appendChild(card);
+    wrap.appendChild(tools);
     return wrap;
   }
 
@@ -646,6 +655,20 @@
 
   /* CDN edges behind a filtered network drop a body now and then; one retry
    * per page costs little and the module never leaves a half file behind. */
+  /* Rule34Video publishes several renditions; honour the setting, else keep the
+   * best the source offered. */
+  function pickVariant(detail) {
+    var want = App.settings.videoQuality || "best";
+    var list = (detail && detail.variants) || [];
+    if (!list.length) return null;
+    if (want === "best") return list[0];
+    var exact = list.filter(function (v) { return v.label === want; })[0];
+    if (exact) return exact;
+    var rank = function (label) { return parseInt(String(label).replace(/[^0-9]/g, ""), 10) || 0; };
+    var below = list.filter(function (v) { return rank(v.label) <= rank(want); });
+    return below[0] || list[list.length - 1];
+  }
+
   async function downloadPage(file, dir, referer, page) {
     if (page && page.num > 0 && App.settings.jmDescramble !== false) {
       return downloadDescrambled(file, dir, referer, page);
@@ -1043,6 +1066,16 @@
     }
   }
 
+  /* Hands the resource page to the system browser; the host refuses anything
+   * that is not https, which every source is. */
+  function openInBrowser(item) {
+    var url = item && item.url;
+    if (!url) { toast("这条没有可打开的链接"); return; }
+    if (!window.NousPlugin) { toast("只有正式宿主能打开浏览器"); return; }
+    window.NousPlugin.request("external.open", { url: url })
+      .catch(function (err) { toast("打开失败：" + String(err && err.message ? err.message : err).slice(0, 60)); });
+  }
+
   function toast(message) {
     var el = $('toast');
     if (!el) return;
@@ -1323,11 +1356,16 @@
         renderQueue();
         toast('已加入下载队列');
       });
+      var openFav = document.createElement('button');
+      openFav.type = 'button';
+      openFav.textContent = '打开';
+      openFav.addEventListener('click', function () { openInBrowser({ url: snap.url }); });
       var drop = document.createElement('button');
       drop.type = 'button';
       drop.textContent = '移除';
       drop.addEventListener('click', function () { favRemove(App.fav.active, snap.uid); });
       row.appendChild(pull);
+      row.appendChild(openFav);
       row.appendChild(drop);
       cell.appendChild(shot);
       cell.appendChild(meta);
@@ -1450,6 +1488,7 @@
     form.jmDescramble.checked = App.settings.jmDescramble !== false;
     form.ua.value = App.settings.ua || '';
     form.perSource.value = String(App.settings.perSource || 20);
+    form.videoQuality.value = App.settings.videoQuality || 'best';
     form.pixivCookie.value = App.settings.pixivCookie || '';
   }
 
@@ -1590,6 +1629,7 @@
       App.settings.ua = form.ua.value.trim();
       E.setUserAgent(App.settings.ua);
       App.settings.perSource = Math.min(60, Math.max(4, parseInt(form.perSource.value, 10) || 20));
+      App.settings.videoQuality = form.videoQuality.value || 'best';
       App.settings.pixivCookie = form.pixivCookie.value.trim();
       if (App.settings.pixivCookie) {
         var pxHosts = ['pixiv.net', '.pixiv.net', 'www.pixiv.net'];

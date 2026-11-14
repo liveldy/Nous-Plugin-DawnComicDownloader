@@ -1091,6 +1091,12 @@
         if (variants.length) best = variants[0].url;
         else if (direct) best = direct[0];
         if (!best) throw new Error('E_PARSE: 未找到视频源');
+        /* KVS lists 360p / 480p / 720p as separate flashvars entries; keep the
+         * labels so the page can honour a quality preference. */
+        var labelled = variants.map(function (v) {
+          var label = v.key === 'video_url' ? '360p' : (v.key === 'video_alt_url' ? '480p' : '720p');
+          return { label: label, url: v.url };
+        }).filter(function (v) { return v.url; });
         var title = /<title>([\s\S]*?)<\/title>/.exec(html);
         var tags = [];
         var tre = /href="https:\/\/rule34video\.com\/tags\/[^"]+"[^>]*>([^<]{1,40})<\/a>/g, tm;
@@ -1100,7 +1106,8 @@
             title: title ? collapse(stripTags(title[1])).replace(/\s*\|\s*Rule 34 Video.*$/i, '') : item.title,
             tags: uniq(tags).slice(0, 14)
           },
-          pages: [{ url: best }]
+          pages: [{ url: best }],
+          variants: labelled
         };
       });
     }
