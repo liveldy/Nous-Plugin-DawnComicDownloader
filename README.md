@@ -11,7 +11,7 @@ Nous 插件。在同一个界面里检索六个图库站点，挑出作品，按
 
 插件协议 1.3，需要 Nous 1.2.0 及以上，平台 `windows-x64`。
 
-1. 安装随 Release 提供的 `DawnComicDownloader-windows-x64.module.zip` 所声明的页面包：`dist/app.nous.dawn-comic-downloader-1.0.0.nous-plugin.json`（插件管理 → 本地安装）。
+1. 安装随 Release 提供的页面包：`dist/app.nous.dawn-comic-downloader-1.0.1.nous-plugin.json`（插件管理 → 本地安装）。
 2. 模块由 `manifest.json` 里的 URL 与 SHA-256 固定，宿主安装时校验。
 3. 打开插件 → 设置 → 填下载目录 → 保存设置（这一步同时把目录登记为原生模块允许写入的根）。
 
