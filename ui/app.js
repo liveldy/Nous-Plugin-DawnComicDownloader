@@ -69,6 +69,24 @@
       });
       return normalize(r);
     },
+    /* Bytes too big for one host request go through a file: written in chunks,
+     * streamed by the engine, then removed. */
+    upload: async function (url, opts) {
+      opts = opts || {};
+      var bytes = opts.bytes || [];
+      var dir = (App.dataRoot || "").replace(/[\\/]+$/, "");
+      if (!dir) throw new Error("E_IO: 还没有拿到 module 的数据目录");
+      var path = dir + "\\upload-" + Date.now() + "-" + Math.random().toString(16).slice(2, 8) + ".bin";
+      await writeBytes(path, new Uint8Array(bytes));
+      try {
+        var r = await Host.invoke("http.request", {
+          url: url, method: "POST", headers: opts.headers || {}, bodyFile: path, timeoutMs: opts.timeoutMs || 60000
+        });
+        return normalize(r);
+      } finally {
+        await Host.invoke("fs.delete", { path: path }).catch(function () {});
+      }
+    },
     post: async function (url, body, opts) {
       opts = opts || {};
       var headers = Object.assign({}, opts.headers || {});
@@ -1053,7 +1071,7 @@
     }
     if (bitmap.close) bitmap.close();
     var buf = await blob.arrayBuffer();
-    return { base64: E.bytesToBase64(new Uint8Array(buf)), mime: 'image/jpeg', ext: 'jpg', bytes: blob.size };
+    return { imageBytes: Array.prototype.slice.call(new Uint8Array(buf)), mime: 'image/jpeg', ext: 'jpg', bytes: blob.size };
   }
 
   async function identify(file) {
@@ -1064,7 +1082,7 @@
     try {
       var prep = await prepareQueryImage(file);
       var found = await E.identifyImage(ctx, {
-        base64: prep.base64,
+        imageBytes: prep.imageBytes,
         mime: prep.mime,
         ext: prep.ext,
         apiKey: App.settings.sauce,
@@ -1255,6 +1273,7 @@
       try {
         var info = await Host.invoke('engine.info', {});
         App.engineVersion = info && info.version ? info.version : '';
+        App.dataRoot = info && info.dataRoot ? info.dataRoot : '';
       } catch (e) { App.engineVersion = ''; }
       var view = (await Host.ready).plugin && (await Host.ready).plugin.view;
       setView(view || 'search');

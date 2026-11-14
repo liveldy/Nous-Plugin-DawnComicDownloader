@@ -324,3 +324,31 @@ test('pixiv drops ugoira items, which are frame archives rather than pages', () 
   assert.equal(items.length, 1);
   assert.equal(items[0].id, '1');
 });
+
+test('image lookup uploads a multipart body through ctx.upload, not a request', async () => {
+  let seen = null;
+  const ctx = {
+    upload: async (url, opts) => {
+      seen = { url, bytes: opts.bytes.length, ctype: opts.headers['Content-Type'] };
+      return {
+        status: 200,
+        body: JSON.stringify({ results: [{ header: { similarity: '92.1', index_id: 5 }, data: { title: 'T', author_name: 'A', ext_urls: ['https://x'] } }] })
+      };
+    }
+  };
+  const hits = await engine.identifyImage(ctx, { imageBytes: [1, 2, 3, 4, 5], mime: 'image/jpeg', ext: 'jpg', apiKey: 'k' });
+  assert.match(seen.url, /saucenao\.com\/search\.php/);
+  assert.ok(seen.bytes > 100, 'multipart body should carry the file bytes');
+  assert.match(seen.ctype, /multipart\/form-data; boundary=/);
+  assert.equal(hits.length, 1);
+  assert.equal(hits[0].similarity, 92.1);
+  assert.equal(hits[0].author, 'A');
+});
+
+test('without a key the fallback says so instead of failing silently', async () => {
+  const ctx = { upload: async () => ({ status: 200, body: '<html>no match</html>' }) };
+  await assert.rejects(
+    engine.identifyImage(ctx, { imageBytes: [1], mime: 'image/jpeg', ext: 'jpg', apiKey: '' }),
+    /E_NO_KEY/
+  );
+});

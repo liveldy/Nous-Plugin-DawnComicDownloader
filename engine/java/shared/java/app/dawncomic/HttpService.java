@@ -643,6 +643,24 @@ public final class HttpService {
     }
 
     private static byte[] bodyBytes(Map<String, Object> params) throws EngineException {
+        /* Uploads that do not fit through the host bridge (the page may not send a
+         * request over 1 MiB) are written to a file first and streamed from here. */
+        String file = Json.str(params, "bodyFile", "");
+        if (!file.isEmpty()) {
+            java.nio.file.Path path = java.nio.file.Paths.get(file);
+            if (!java.nio.file.Files.isRegularFile(path)) {
+                throw new EngineException("E_IO", "bodyFile not found: " + path);
+            }
+            try {
+                long size = java.nio.file.Files.size(path);
+                if (size > 16L * 1024 * 1024) {
+                    throw new EngineException("E_TOO_LARGE", "bodyFile is " + size + " bytes, limit is 16777216");
+                }
+                return java.nio.file.Files.readAllBytes(path);
+            } catch (java.io.IOException e) {
+                throw EngineException.io("cannot read bodyFile " + path + ": " + e.getMessage(), e);
+            }
+        }
         String base64 = Json.str(params, "bodyBase64", "");
         if (!base64.isEmpty()) {
             try {

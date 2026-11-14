@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -60,13 +60,22 @@
       "entry": "app.dawncomic.PluginMain",
       "mainJar": "app/plugin.jar",
       "asset": {
-        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.11/DawnComicDownloader-windows-x64.module.zip",
-        "sha256": "b11673b7250327126eef748f0938144feb3e052a7cbe2d936551bb939025ebf1",
-        "bytes": 16656229
+        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.1.6/DawnComicDownloader-windows-x64.module.zip",
+        "sha256": "cf2e095b7b1878c5a2097a7649e047a9c182c82e1f88609a4000598b85fd63c7",
+        "bytes": 16656485
       }
     }
   },
   "changelog": [
+    {
+      "version": "1.1.6",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "图片检索的上传改走文件：模块新增 http.request 的 bodyFile 参数（把本地文件作为请求体流式发出），页面先把 multipart 写进插件数据目录再交给模块，最后删除临时文件。彻底绕开“单次请求 1 MiB”，不再受图片大小限制。",
+        "SauceNAO / IQDB 的请求体改为由字节直接构造（multipartBytes），页面用 ctx.upload 发送；上传前仍缩到最长边 1024 并转 JPEG，兼顾速度与 IQDB 的格式要求。",
+        "模块重建（16,656,485 B）。"
+      ]
+    },
     {
       "version": "1.1.5",
       "publishedAt": "2026-11-14",

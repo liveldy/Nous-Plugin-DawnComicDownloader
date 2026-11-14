@@ -1176,8 +1176,8 @@
 
   /* --------------------------------------------------------- image search */
 
-  function multipart(fields, fileField, fileName, mime, base64) {
-    var boundary = '----DawnComicDownloaderBoundary' + Math.random().toString(16).slice(2) + Date.now().toString(16);
+  function multipartBytes(fields, fileField, fileName, mime, fileBytes) {
+    var boundary = '----TideBoundary' + Math.random().toString(16).slice(2) + Date.now().toString(16);
     var head = '';
     Object.keys(fields || {}).forEach(function (k) {
       head += '--' + boundary + '\r\nContent-Disposition: form-data; name="' + k + '"\r\n\r\n' + fields[k] + '\r\n';
@@ -1185,8 +1185,13 @@
     head += '--' + boundary + '\r\nContent-Disposition: form-data; name="' + fileField + '"; filename="' + fileName + '"\r\n' +
       'Content-Type: ' + mime + '\r\n\r\n';
     var tail = '\r\n--' + boundary + '--\r\n';
-    var body = asciiBytes(head).concat(base64ToBytes(base64), asciiBytes(tail));
-    return { boundary: boundary, base64: bytesToBase64(body) };
+    var body = asciiBytes(head).concat(Array.prototype.slice.call(fileBytes || []), asciiBytes(tail));
+    return { boundary: boundary, bytes: body };
+  }
+
+  function multipart(fields, fileField, fileName, mime, base64) {
+    var built = multipartBytes(fields, fileField, fileName, mime, base64ToBytes(base64));
+    return { boundary: built.boundary, base64: bytesToBase64(built.bytes) };
   }
 
   var B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
@@ -1230,20 +1235,22 @@
     return out;
   }
 
-  /* SauceNAO: needs a free API key. Returns normalised matches. */
+  /* SauceNAO: needs a free API key. The image is handed over as raw bytes; the
+   * page writes them to a file and the engine streams that file, because a host
+   * request may not exceed 1 MiB. */
   function sauceNao(ctx, opts) {
-    var body = multipart(
+    var built = multipartBytes(
       { output_type: 2, numres: 6, db: 999, api_key: opts.apiKey || '' },
-      'file', 'query.' + (opts.ext || 'jpg'), opts.mime || 'image/jpeg', opts.base64
+      'file', 'query.' + (opts.ext || 'jpg'), opts.mime || 'image/jpeg', opts.imageBytes
     );
-    return ctx.post('https://saucenao.com/search.php', '', {
+    return ctx.upload('https://saucenao.com/search.php', {
       headers: Object.assign(baseHeaders('https://saucenao.com/'), {
-        'Content-Type': 'multipart/form-data; boundary=' + body.boundary
+        'Content-Type': 'multipart/form-data; boundary=' + built.boundary
       }),
-      bodyBase64: body.base64
+      bytes: built.bytes
     }).then(function (res) {
       var json;
-      try { json = JSON.parse(res.body); } catch (e) { throw new Error('E_PARSE: SauceNAO 返回非 JSON'); }
+      try { json = JSON.parse(res.body); } catch (e) { throw new Error('E_PARSE: SauceNAO 返回非 JSON（HTTP ' + res.status + '）'); }
       var out = [];
       (json.results || []).forEach(function (r) {
         var h = r.header || {}, d = r.data || {};
@@ -1263,10 +1270,10 @@
 
   /* IQDB: keyless fallback, decent for anime/manga frames. */
   function iqdb(ctx, opts) {
-    var body = multipart({ 'service[]': 1 }, 'file', 'query.' + (opts.ext || 'jpg'), opts.mime || 'image/jpeg', opts.base64);
-    return ctx.post('https://iqdb.org/', '', {
-      headers: Object.assign(baseHeaders('https://iqdb.org/'), { 'Content-Type': 'multipart/form-data; boundary=' + body.boundary }),
-      bodyBase64: body.base64
+    var built = multipartBytes({ 'service[]': 1 }, 'file', 'query.' + (opts.ext || 'jpg'), opts.mime || 'image/jpeg', opts.imageBytes);
+    return ctx.upload('https://iqdb.org/', {
+      headers: Object.assign(baseHeaders('https://iqdb.org/'), { 'Content-Type': 'multipart/form-data; boundary=' + built.boundary }),
+      bytes: built.bytes
     }).then(function (res) {
       var html = res.body || '';
       var out = [];
@@ -1288,6 +1295,8 @@
     });
   }
 
+  /* SauceNAO first when a key exists, IQDB as the keyless fallback; "no key" is
+   * reported only when neither service produced anything usable. */
   function identifyImage(ctx, opts) {
     var firstErr = null;
     var primary = opts.apiKey
@@ -1314,7 +1323,6 @@
       });
   }
 
-  /* Turn one identification into ranked text queries for the six sources. */
   function queriesFromMatch(m) {
     var q = [];
     if (m.title) q.push(m.title);
