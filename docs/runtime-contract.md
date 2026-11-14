@@ -21,6 +21,7 @@ await NousPlugin.request('runtime.invoke', {method, params}, {timeoutMs});
 | `fs.allowRoot` | `{path}` | `{path}` | 保存设置时登记下载目录；之后写入只允许在该目录与插件数据目录内 |
 | `fs.mkdirs` | `{path}` | `{path, created}` | 建 `<编号> <标题>/` |
 | `fs.stat` / `fs.list` / `fs.delete` | `{path}` | 文件信息 / 列表 / `{deleted, files}` | 目录检查、清理 |
+| `file.writeBase64` | `{path, base64}` | `{path, bytes}` | 写入页面处理过的字节（禁漫乱序页图还原成 PNG 后落盘）；同样受允许写入根约束 |
 | `file.readBase64` | `{path, maxBytes?}` | `{base64, bytes, mime}` | 把本机图片送进反查 |
 | `cookie.set` / `cookie.list` / `cookie.clear` | `{host, cookie}` / `{}` / `{host?}` | — | 18comic 的 `cf_clearance` 等通行证，按域持久化到数据目录的 `cookies.json` |
 | `net.probe` | `{url, timeoutMs?}` | `{status, contentType, bytes, finalUrl}` | 设置页测连通 |

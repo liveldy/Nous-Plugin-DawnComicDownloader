@@ -85,6 +85,8 @@
 
   window.__DAWN_DEMO__ = {
     theme: window.__DAWN_THEME || (new URLSearchParams(location.search).get('theme') || 'light'),
+    /* the preview pages drive the host-side navigation with __DAWN_NAV__('settings') */
+    onNav: function (handler) { window.__DAWN_NAV__ = handler; },
     invoke: async function (method, params) {
       params = params || {};
       if (method === 'image.proxy') return {dataUrl: coverFor(params.url), bytes: 1, mime: 'image/jpeg'};

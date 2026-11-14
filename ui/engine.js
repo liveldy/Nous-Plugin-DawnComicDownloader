@@ -351,6 +351,128 @@
 
   /* -------------------------------------------------------------- 18comic */
 
+  /* HTML client ported from hect0x7/JMComic-Crawler-Python (MIT). What came
+   * across is the part that matters: the search parameter set, the album /
+   * photo page fields, the base64-wrapped page body, the domain choice, and the
+   * band-shuffle key every 18comic page image is served with. The library's
+   * encrypted app API is not used here — it needs hardcoded app secrets and an
+   * AES-ECB step the sandboxed page cannot run; the HTML client returns the
+   * same content. */
+
+  var JM = {
+    SCRAMBLE_220980: 220980,
+    SCRAMBLE_268850: 268850,
+    SCRAMBLE_421926: 421926,
+    DOMAINS: ['18comic.vip', '18comic.org', '18comic.cc', 'jm-comic2.cc'],
+    VERSION: '2.1.13'
+  };
+
+  /* MD5, because 18comic derives the band count from md5(aid + file name) and
+   * WebCrypto has no MD5. Straight RFC 1321, byte in, hex out. */
+  function md5Hex(bytes) {
+    var s = [7, 12, 17, 22, 5, 9, 14, 20, 4, 11, 16, 23, 6, 10, 15, 21];
+    var K = [];
+    for (var i = 0; i < 64; i++) K[i] = Math.floor(Math.abs(Math.sin(i + 1)) * 4294967296) | 0;
+    var len = bytes.length;
+    var withPad = len + 9;
+    var total = ((withPad + 63) >> 6) << 6;
+    var msg = new Uint8Array(total);
+    msg.set(bytes);
+    msg[len] = 0x80;
+    var bitsLo = (len * 8) >>> 0, bitsHi = Math.floor(len / 536870912) >>> 0;
+    msg[total - 8] = bitsLo & 0xff; msg[total - 7] = (bitsLo >>> 8) & 0xff;
+    msg[total - 6] = (bitsLo >>> 16) & 0xff; msg[total - 5] = (bitsLo >>> 24) & 0xff;
+    msg[total - 4] = bitsHi & 0xff; msg[total - 3] = (bitsHi >>> 8) & 0xff;
+
+    var a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;
+
+    function rol(x, c) { return ((x << c) | (x >>> (32 - c))) | 0; }
+
+    for (var off = 0; off < total; off += 64) {
+      var M = new Array(16);
+      for (var j = 0; j < 16; j++) {
+        M[j] = msg[off + j * 4] | (msg[off + j * 4 + 1] << 8) | (msg[off + j * 4 + 2] << 16) | (msg[off + j * 4 + 3] << 24);
+      }
+      var A = a0, B = b0, C = c0, D = d0;
+      for (var k = 0; k < 64; k++) {
+        var F, g;
+        if (k < 16) { F = (B & C) | (~B & D); g = k; }
+        else if (k < 32) { F = (D & B) | (~D & C); g = (5 * k + 1) & 15; }
+        else if (k < 48) { F = B ^ C ^ D; g = (3 * k + 5) & 15; }
+        else { F = C ^ (B | ~D); g = (7 * k) & 15; }
+        var tmp = D;
+        D = C;
+        C = B;
+        var sum = (A + F + K[k] + M[g]) | 0;
+        B = (B + rol(sum, s[(k >> 4) * 4 + (k % 4)])) | 0;
+        A = tmp;
+      }
+      a0 = (a0 + A) | 0; b0 = (b0 + B) | 0; c0 = (c0 + C) | 0; d0 = (d0 + D) | 0;
+    }
+
+    function hex32(n) {
+      var out = '';
+      for (var b = 0; b < 4; b++) out += ('0' + ((n >>> (b * 8)) & 0xff).toString(16)).slice(-2);
+      return out;
+    }
+    return hex32(a0) + hex32(b0) + hex32(c0) + hex32(d0);
+  }
+
+  function utf8Bytes(str) {
+    var out = [];
+    for (var i = 0; i < str.length; i++) {
+      var c = str.charCodeAt(i);
+      if (c < 0x80) out.push(c);
+      else if (c < 0x800) out.push(0xc0 | (c >> 6), 0x80 | (c & 63));
+      else if (c < 0xd800 || c >= 0xe000) out.push(0xe0 | (c >> 12), 0x80 | ((c >> 6) & 63), 0x80 | (c & 63));
+      else {
+        var cp = 0x10000 + ((c - 0xd800) << 10) + (str.charCodeAt(++i) - 0xdc00);
+        out.push(0xf0 | (cp >> 18), 0x80 | ((cp >> 12) & 63), 0x80 | ((cp >> 6) & 63), 0x80 | (cp & 63));
+      }
+    }
+    return out;
+  }
+
+  function decodeUtf8(bytes) {
+    if (typeof TextDecoder !== 'undefined') return new TextDecoder('utf-8').decode(new Uint8Array(bytes));
+    var s = '';
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+    return decodeURIComponent(escape(s));
+  }
+
+  /* How many horizontal bands an 18comic page image was shuffled into, and
+   * therefore how many to re-stack. 0 means "served as is". Same thresholds and
+   * the same md5 trick as JMComic's JmImageTool.get_num. */
+  function jmScrambleNum(scrambleId, aid, fileName) {
+    if (scrambleId === undefined || scrambleId === null || scrambleId === '') return 0;
+    var sid = parseInt(scrambleId, 10) || 0;
+    var album = parseInt(aid, 10) || 0;
+    if (album < sid) return 0;
+    if (album < JM.SCRAMBLE_268850) return 10;
+    var x = album < JM.SCRAMBLE_421926 ? 10 : 8;
+    var hex = md5Hex(utf8Bytes(String(album) + String(fileName)));
+    var num = hex.charCodeAt(hex.length - 1) % x;
+    return num * 2 + 2;
+  }
+
+  /* Band permutation, as (sourceY, destY, height) triples, so the page can
+   * apply it with a canvas and the test suite can check it without one. */
+  function jmScramblePlan(num, height) {
+    if (!num || num <= 0) return [];
+    var move = Math.floor(height / num);
+    var over = height % num;
+    var plan = [];
+    for (var i = 0; i < num; i++) {
+      var step = move;
+      var ySrc = height - (move * (i + 1)) - over;
+      var yDst = move * i;
+      if (i === 0) step += over;
+      else yDst += over;
+      plan.push({ src: ySrc, dst: yDst, h: step });
+    }
+    return plan;
+  }
+
   var jm = {
     id: 'jm',
     label: '禁漫天堂',
@@ -359,26 +481,41 @@
     kind: 'gallery',
     caps: { text: true, browse: true, tag: true, image: false },
     challenge: true,
-    note: 'Cloudflare 管理型质询：需在宿主登录窗口过一次人机校验取得 cf_clearance，之后由 cookie 罐随请求发送。结构按社区客户端实现，未在本机通过质询验证。',
+    note: 'HTML 客户端按 JMComic-Crawler-Python 移植：/search/photos 检索、/album 详情、/photo 取页、chapter_view_template 取乱序参数；域名可在设置里换。未在本机通过 Cloudflare 质询验证。',
+
+    domain: function (ctx) {
+      var raw = (ctx && ctx.settings && ctx.settings.jmDomain) || JM.DOMAINS[0];
+      var host = String(raw).replace(/^https?:\/\//i, '').replace(/\/.*$/, '').trim().toLowerCase();
+      return /^[a-z0-9.-]+\.[a-z]{2,}$/.test(host) ? host : JM.DOMAINS[0];
+    },
+
+    baseOf: function (ctx) { return 'https://' + jm.domain(ctx); },
 
     challengeCheck: function (html) {
       return /Just a moment|cf_chl|challenge-platform|Enable JavaScript and cookies/i.test(html || '');
     },
 
-    parseCards: function (html) {
+    /* Newer 18comic pages ship the real markup inside base64Utf8(...). */
+    unwrap: function (html) {
+      var m = /const html = base64DecodeUtf8\("([\s\S]*?)"\)/.exec(html || '');
+      if (!m) return html || '';
+      try { return decodeUtf8(base64ToBytes(m[1])); } catch (e) { return html || ''; }
+    },
+
+    parseCards: function (html, base) {
       var out = [];
-      var re = /<a[^>]+href="(\/album\/(\d+)\/[^"]*)"[^>]*>([\s\S]{0,700}?)<\/a>/g, m;
+      var re = /<a[^>]+href="(\/album\/(\d+)\/[^"]*)"[^>]*>([\s\S]{0,900}?)<\/a>/g, m;
       while ((m = re.exec(html))) {
         var body = m[3];
         var img = /(?:data-original|data-src|src)="([^"]+)"/.exec(body);
-        var title = /<div class="[^"]*(?:album-title|title)[^"]*"[^>]*>([\s\S]{0,160}?)<\/div>/.exec(m[0]) ||
-          /<span[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]{0,160}?)<\/span>/.exec(m[0]) ||
+        var title = /<div class="[^"]*(?:album-title|title)[^"]*"[^>]*>([\s\S]{0,200}?)<\/div>/.exec(m[0]) ||
+          /<span[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]{0,200}?)<\/span>/.exec(m[0]) ||
           /title="([^"]{2,160})"/.exec(m[0]);
         out.push({
           id: m[2],
-          url: absolute(jm.base, m[1]),
+          url: absolute(base, m[1]),
           title: title ? collapse(stripTags(title[1])) : '#' + m[2],
-          cover: img ? absolute(jm.base, img[1]) : '',
+          cover: img ? absolute(base, img[1]) : '',
           author: '',
           tags: []
         });
@@ -386,44 +523,135 @@
       return dedupe(out);
     },
 
+    /* Search takes the same parameter set as JMComic's html client. A purely
+     * numeric query is an album id, which the site would redirect to anyway. */
     search: function (ctx, query, page) {
+      var base = jm.baseOf(ctx);
       var p = Math.max(1, page || 1);
-      var url = jm.base + '/search/photos?' + qs({ search_query: query, page: p, main_tag: 0 });
-      return ctx.get(url, { headers: baseHeaders(jm.base + '/') }).then(function (res) {
-        if (jm.challengeCheck(res.body)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
-        return { items: jm.parseCards(res.body || ''), hasMore: true };
+      var q = collapse(query);
+      if (/^\d{2,}$/.test(q)) {
+        return ctx.get(base + '/album/' + q + '/', { headers: baseHeaders(base + '/') }).then(function (res) {
+          var html = jm.unwrap(res.body);
+          if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+          var meta = jm.albumMeta(html);
+          return {
+            items: [{ id: q, url: base + '/album/' + q + '/', title: meta.title || ('#' + q), cover: meta.cover, author: meta.authors[0] || '', tags: meta.tags.slice(0, 6) }],
+            hasMore: false
+          };
+        });
+      }
+      var url = base + '/search/photos?' + qs({ search_query: q, page: p, main_tag: 0, o: 'mr', t: 'a' });
+      return ctx.get(url, { headers: baseHeaders(base + '/') }).then(function (res) {
+        var html = jm.unwrap(res.body);
+        if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+        var items = jm.parseCards(html, base);
+        return { items: items, hasMore: items.length > 0 };
       });
     },
 
     browse: function (ctx, page) {
+      var base = jm.baseOf(ctx);
       var p = Math.max(1, page || 1);
-      return ctx.get(jm.base + '/albums?page=' + p, { headers: baseHeaders(jm.base + '/') }).then(function (res) {
-        if (jm.challengeCheck(res.body)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
-        return { items: jm.parseCards(res.body || ''), hasMore: true };
+      return ctx.get(base + '/albums?page=' + p, { headers: baseHeaders(base + '/') }).then(function (res) {
+        var html = jm.unwrap(res.body);
+        if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+        return { items: jm.parseCards(html, base), hasMore: true };
       });
     },
 
+    albumMeta: function (html) {
+      var name = /id="book-name"[^>]*>([\s\S]*?)</.exec(html) || /<title>([\s\S]*?)\|/.exec(html);
+      var cover = /<meta property="og:image" content="([^"]+)"/.exec(html) ||
+        /<div class="[^"]*thumb-overlay[^"]*"[\s\S]{0,400}?data-original="([^"]+)"/.exec(html);
+      var authors = [];
+      var block = /<span itemprop="author" data-type="author">([\s\S]*?)<\/span>/.exec(html);
+      if (block) {
+        var re = /<a[^>]*>([\s\S]*?)<\/a>/g, m;
+        while ((m = re.exec(block[1]))) authors.push(collapse(stripTags(m[1])));
+      }
+      var works = [];
+      var wb = /<span itemprop="author" data-type="works">([\s\S]*?)<\/span>/.exec(html);
+      if (wb) {
+        var rw = /<a[^>]*>([\s\S]*?)<\/a>/g, mw;
+        while ((mw = rw.exec(wb[1]))) works.push(collapse(stripTags(mw[1])));
+      }
+      var tags = works.slice();
+      var tb = /<span itemprop="genre" data-type="tags">([\s\S]*?)<\/span>/.exec(html);
+      if (tb) {
+        var rt = /<a[^>]*>([\s\S]*?)<\/a>/g, mt;
+        while ((mt = rt.exec(tb[1]))) tags.push(collapse(stripTags(mt[1])));
+      }
+      var count = /<span class="pagecount"[\s\S]{0,40}?:(\d+)<\/span>/.exec(html);
+      var scramble = /var scramble_id = (\d+);/.exec(html);
+      var chapters = [];
+      var rc = /href="(\/photo\/(\d+)\/?)"/g, mc;
+      while ((mc = rc.exec(html))) {
+        if (chapters.indexOf(mc[2]) < 0) chapters.push(mc[2]);
+      }
+      return {
+        title: name ? collapse(stripTags(name[1])) : '',
+        cover: cover ? absolute(jm.base, cover[1]) : '',
+        authors: uniq(authors),
+        tags: uniq(tags),
+        works: uniq(works),
+        count: count ? parseInt(count[1], 10) : 0,
+        scrambleId: scramble ? scramble[1] : '',
+        chapters: chapters
+      };
+    },
+
     detail: function (ctx, item) {
-      return ctx.get(item.url, { headers: baseHeaders(jm.base + '/') }).then(function (res) {
-        var html = res.body || '';
+      var base = jm.baseOf(ctx);
+      var aid = String(item.id || '');
+      return ctx.get(item.url || (base + '/album/' + aid + '/'), { headers: baseHeaders(base + '/') }).then(function (res) {
+        var html = jm.unwrap(res.body);
         if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
-        var chapter = /href="(\/photo\/\d+[^"]*)"/.exec(html) || /href="(\/chapter\/[^"]*)"/.exec(html);
-        var albumTitle = /<h1[^>]*>([\s\S]{0,200}?)<\/h1>/.exec(html);
-        if (!chapter) throw new Error('E_PARSE: 未找到章节入口');
-        var target = absolute(jm.base, chapter[1]);
-        return ctx.get(target, { headers: baseHeaders(item.url) }).then(function (r2) {
-          var pages = jm.pages(r2.body || '');
+        var meta = jm.albumMeta(html);
+        var chapters = meta.chapters.length ? meta.chapters : [aid];
+        var queue = chapters.slice(0, 20);
+        var pages = [];
+        var chain = Promise.resolve();
+        queue.forEach(function (pid) {
+          chain = chain.then(function () {
+            return ctx.get(base + '/photo/' + pid + '/', { headers: baseHeaders(base + '/album/' + aid + '/') })
+              .then(function (r) {
+                var body = jm.unwrap(r.body);
+                if (jm.challengeCheck(body)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+                var scramble = (/var scramble_id = (\d+);/.exec(body) || [])[1] || meta.scrambleId;
+                jm.pageUrls(body, base).forEach(function (url) {
+                  var file = url.split('/').pop().split('?')[0];
+                  pages.push({ url: url, num: jmScrambleNum(scramble, aid, file), scrambleId: scramble, aid: aid });
+                });
+              });
+          });
+        });
+        return chain.then(function () {
           if (!pages.length) throw new Error('E_PARSE: 章节内没有图片');
-          return { meta: { title: albumTitle ? collapse(stripTags(albumTitle[1])) : item.title, tags: [] }, pages: pages };
+          return {
+            meta: { title: meta.title || item.title, author: meta.authors[0] || '', tags: meta.tags.slice(0, 10) },
+            pages: pages,
+            count: meta.count
+          };
         });
       });
     },
 
-    pages: function (html) {
+    pageUrls: function (html, base) {
       var urls = [];
-      var re = /(?:data-original|data-src|src)="([^"]+\/media\/photos\/[^"]+)"/g, m;
-      while ((m = re.exec(html))) urls.push(absolute(jm.base, m[1]));
-      return uniq(urls).map(function (u) { return { url: u }; });
+      var re = /data-original="([^"]+)"/g, m;
+      while ((m = re.exec(html))) {
+        var u = absolute(base, m[1]);
+        if (/\/media\/(photos|albums)\//.test(u) && !/blank\.(?:gif|png|jpg)$/i.test(u)) urls.push(u);
+      }
+      if (!urls.length) {
+        var re2 = /<img[^>]+id="album_photo_[^"]*"[^>]+(?:data-original|src)="([^"]+)"/g, m2;
+        while ((m2 = re2.exec(html))) urls.push(absolute(base, m2[1]));
+      }
+      return uniq(urls);
+    },
+
+    pages: function (html, base) {
+      return jm.pageUrls(html, base).map(function (u) { return { url: u }; });
     }
   };
 
@@ -903,6 +1131,10 @@
     base64ToBytes: base64ToBytes,
     bytesToBase64: bytesToBase64,
     asciiBytes: asciiBytes,
+    md5Hex: md5Hex,
+    jmScrambleNum: jmScrambleNum,
+    jmScramblePlan: jmScramblePlan,
+    jmDomains: JM.DOMAINS,
     parsers: {
       niacgCards: niacg.parseCards,
       niacgPages: niacg.pages,
@@ -912,6 +1144,8 @@
       jmCards: jm.parseCards,
       jmPages: jm.pages,
       jmChallenge: jm.challengeCheck,
+      jmAlbumMeta: jm.albumMeta,
+      jmPageUrls: jm.pageUrls,
       hlPosts: hentaileague.parsePosts,
       rule34Cards: rule34us.parseCards,
       r34videoCards: r34video.parseCards

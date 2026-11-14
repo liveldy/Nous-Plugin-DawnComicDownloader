@@ -135,3 +135,24 @@ KVS（Kernel Video Sharing）。**验证**。
 | 地区/代理 | 直连超时 | 原生模块读 `HTTPS_PROXY`/`HTTP_PROXY`；无代理时报 `E_TIMEOUT` |
 | 站点本身是视频站 | HentaiLeague / Rule34Video 下的是视频不是图集 | 统一成 `pages[]`，视频就是 1 项，文件名为 `001.mp4` |
 | 内容分级 | 六个站点全部为成人内容 | 插件不改变站点内容与访问条件；下载属地版权归原站与作者 |
+
+## 5. 禁漫天堂：JMComic 移植说明
+
+`ui/engine.js` 的 `jm` 适配器按 [hect0x7/JMComic-Crawler-Python](https://github.com/hect0x7/JMComic-Crawler-Python)（MIT）的 **HTML 客户端**重写。取过来的部分：
+
+| 机制 | 原实现 | 本插件 |
+| --- | --- | --- |
+| 检索 | `JmHtmlClient.search` → `/search/photos`，参数 `main_tag/search_query/page/o/t` | 同参数集，`o=mr&t=a`；纯数字查询直接开 `/album/{id}/` |
+| 分类 | `API_CATEGORY = '/albums'` | 浏览模式 `/albums?page=` |
+| 详情 | `fetch_detail_entity` → `/album/{id}/`，字段 `id="book-name"`、`itemprop="author" data-type="author|works"`、`itemprop="genre" data-type="tags"`、`pagecount`、`var scramble_id` | 同字段，`jm.albumMeta()` |
+| 章节 | 详情页里的 `/photo/{id}` 链接 | 逐个取（上限 20 章），按章序拼接页列表 |
+| 页图 | `/photo/{id}` 的 `data-original`（`/media/photos/…`） | 同上，过滤 `blank.gif` |
+| 包裹页 | `parse_jm_base64_html`：`const html = base64DecodeUtf8("…")` | `jm.unwrap()` |
+| 乱序参数 | `fetch_scramble_id` → `/chapter_view_template?id=&mode=vertical&page=0&app_img_shunt=1&express=off&v=` → `var scramble_id` | 先读章节页的 `var scramble_id`，取不到再回落到本子详情页 |
+| 分段数 | `JmImageTool.get_num(scramble_id, aid, filename)` | `jmScrambleNum()`：`aid<scramble_id→0`；`aid<268850→10`；否则 `md5(str(aid)+filename)` 末位取模（`aid<421926` 用 10，否则 8）`×2+2` |
+| 还原 | `decode_and_save`：按 num 等分高度，第 i 段从 `h-(move*(i+1))-over` 搬到 `move*i`（首段加 `over`） | `jmScramblePlan()` 输出 `{src,dst,h}` 三元组，页面用 canvas 重排后写 PNG |
+| 域名 | `DOMAIN_HTML_LIST` 轮询 | 设置页可改域名，默认 `18comic.vip`，内置 `18comic.org / 18comic.cc / jm-comic2.cc` 备选 |
+
+**没有移植**：`JmApiClient`（App 接口）。它需要 `APP_TOKEN_SECRET` / `APP_DATA_SECRET` 两个硬编码密钥、`token/tokenparam` 头、`APP_VERSION` 跟随，以及 AES-ECB 解密响应（`JmCryptoTool.decode_resp_data`）。这和 HTML 客户端拿到的内容相同，却把插件绑在会变的应用版本和密钥上；沙箱页面也没有同步 AES-ECB。需要时再按 `client: api` 另开分支。
+
+**验证状态**：本机对 18comic 全站只能拿到 Cloudflare 质询页（HTTP 403），上述解析与还原逻辑因此只做到“结构与算法对齐 + 单测锁住”，没有真实页面回放。已在单测里锁住：md5 向量、5 组 `get_num` 参考值（与 Python 计算一致）、分段计划不重叠且覆盖整幅、base64 包裹页展开、页图顺序与 `blank.gif` 过滤。首次在能过质询的环境里跑通后，应把真实回包加入 `test/fixtures/`。

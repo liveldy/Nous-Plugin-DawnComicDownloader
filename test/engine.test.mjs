@@ -165,3 +165,72 @@ test('base64 round-trips binary data unchanged', () => {
   const bytes = [0, 1, 2, 253, 254, 255, 128, 64];
   assert.deepEqual(engine.base64ToBytes(engine.bytesToBase64(bytes)), bytes);
 });
+
+/* ---- 18comic (HTML client ported from JMComic-Crawler-Python) ---------- */
+
+test('md5 matches RFC 1321 vectors', () => {
+  const bytes = s => engine.asciiBytes(s);
+  assert.equal(engine.md5Hex(bytes('')), 'd41d8cd98f00b204e9800998ecf8427e');
+  assert.equal(engine.md5Hex(bytes('abc')), '900150983cd24fb0d6963f7d28e17f72');
+  assert.equal(engine.md5Hex(bytes('The quick brown fox jumps over the lazy dog')),
+    '9e107d9d372bb6826bd81d3542a419d6');
+});
+
+test('scramble band count follows JMComic get_num', () => {
+  // reference values computed with hashlib, same formula as JmImageTool.get_num
+  assert.equal(engine.jmScrambleNum('', 400000, 'a.jpg'), 0, 'no scramble id means nothing to undo');
+  assert.equal(engine.jmScrambleNum(220980, 100000, '00001.jpg'), 0, 'older than the id: served whole');
+  assert.equal(engine.jmScrambleNum(220980, 250000, '00001.jpg'), 10);
+  assert.equal(engine.jmScrambleNum(220980, 300000, '00001.jpg'), 2);
+  assert.equal(engine.jmScrambleNum(220980, 500000, '00001.jpg'), 12);
+  assert.equal(engine.jmScrambleNum(220980, 421926, '00002.png'), 6);
+  assert.equal(engine.jmScrambleNum(0, 400000, '00001.jpg'), 16);
+});
+
+test('scramble plan tiles the page exactly once', () => {
+  for (const [num, h] of [[2, 1000], [10, 1001], [12, 2048], [18, 799]]) {
+    const plan = engine.jmScramblePlan(num, h);
+    assert.equal(plan.length, num);
+    assert.equal(plan.reduce((n, p) => n + p.h, 0), h);
+    const dsts = plan.map(p => `${p.dst}:${p.h}`).join(',');
+    assert.equal(dsts.split(',').length, num);
+    const cover = new Array(h).fill(0);
+    plan.forEach(p => { for (let y = p.dst; y < p.dst + p.h; y++) cover[y]++; });
+    assert.ok(cover.every(v => v === 1), 'every output row drawn once');
+    plan.forEach(p => assert.ok(p.src >= 0 && p.src + p.h <= h, 'source band inside the image'));
+  }
+  assert.deepEqual(engine.jmScramblePlan(0, 10), []);
+});
+
+test('18comic album page fields are read from the markup', () => {
+  const html = `<h1 id="book-name">テスト本</h1>
+    <meta property="og:image" content="https://cdn.example/media/cover.jpg">
+    <span itemprop="author" data-type="author"><a href="/search/photos?search_query=art">作者A</a></span>
+    <span itemprop="author" data-type="works"><a href="/tags/work">作品B</a></span>
+    <span itemprop="genre" data-type="tags"><a href="/tags/tag">标签C</a></span>
+    <span class="pagecount">頁數:32</span>
+    <script>var scramble_id = 220980;</script>
+    <a href="/photo/400001/">第1話</a><a href="/photo/400002/">第2話</a>`;
+  const meta = engine.parsers.jmAlbumMeta(html);
+  assert.equal(meta.title, 'テスト本');
+  assert.deepEqual(meta.authors, ['作者A']);
+  assert.deepEqual(meta.works, ['作品B']);
+  assert.ok(meta.tags.includes('作品B') && meta.tags.includes('标签C'));
+  assert.equal(meta.count, 32);
+  assert.equal(meta.scrambleId, '220980');
+  assert.deepEqual(meta.chapters, ['400001', '400002']);
+});
+
+test('18comic wraps the real markup in base64 and page images are ordered', () => {
+  const inner = '<img data-original="https://cdn.example/media/photos/400001/00001.jpg">' +
+    '<img data-original="https://cdn.example/media/photos/400001/00002.jpg">' +
+    '<img data-original="https://cdn.example/media/albums/blank.gif">';
+  const wrapped = `<script>const html = base64DecodeUtf8("${Buffer.from(inner).toString('base64')}");</script>`;
+  const url = 'https://18comic.vip/photo/400001/';
+  const get = engine.getSource('jm');
+  const urls = engine.parsers.jmPageUrls(get.unwrap(wrapped), url);
+  assert.deepEqual(urls, [
+    'https://cdn.example/media/photos/400001/00001.jpg',
+    'https://cdn.example/media/photos/400001/00002.jpg'
+  ]);
+});

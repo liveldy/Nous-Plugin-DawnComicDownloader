@@ -48,7 +48,7 @@ D:\Manga\
 | --- | --- | --- | --- | --- |
 | Xpicvid | ✓ | ✓ | ✓ | 帝国 CMS，检索走 `POST /e/search/index.php`，阅读器 `moeupup-*.html` 顺序出图 |
 | Ahri Gallery | — | ✓ | — | 站内无文字检索：拉最近 3 页后按标题本地筛选 |
-| 禁漫天堂 | ✓ | ✓ | ✓ | Cloudflare 管理型质询，需在设置里填 `cf_clearance`（见下） |
+| 禁漫天堂 | ✓ | ✓ | ✓ | HTML 客户端按 JMComic 移植（详情/章节/页图/乱序参数），Cloudflare 质询需在设置里填 `cf_clearance` |
 | Hentai League | ✓ | ✓ | ✓ | WordPress `wp-json`，`contentUrl` 直接是 mp4 |
 | Rule34 | ✓ | ✓ | ✓ | Gelbooru 0.1.11 改造站，`?r=posts/index&q=` 之后取 `posts/view` 原图 |
 | Rule34Video | ✓ | ✓ | ✓ | KVS 内核，播放页 `flashvars` 取 720p/480p/360p 最高一档 |

@@ -43,4 +43,13 @@ const dark = results
   .replace('<script src="demo-host.js"></script>', '<script>window.__DAWN_THEME = "dark";</script>\n<script src="demo-host.js"></script>')
   .replace('</body>', pick + '</body>');
 await fs.writeFile(path.join(root, 'ui/preview-dark.html'), dark);
+
+const nav = `<script>
+  // design review: the host sidebar switches to the settings view
+  setTimeout(function () { if (window.__DAWN_NAV__) window.__DAWN_NAV__('settings'); }, 500);
+</script>
+`;
+const settings = empty.replace('</body>', nav + '</body>')
+  .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview settings</title>');
+await fs.writeFile(path.join(root, 'ui/preview-settings.html'), settings);
 console.log('wrote ui/preview.html, ui/preview-empty.html, ui/preview-grid.html');

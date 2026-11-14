@@ -384,6 +384,48 @@ public final class FileService {
         return out;
     }
 
+    /**
+     * Writes decoded bytes to a path inside the writable roots. Used by the page after it has
+     * post-processed an image (18comic ships its pages with shuffled horizontal bands, and the
+     * browser is where the image decoder lives).
+     *
+     * @param raw    file path
+     * @param base64 payload, standard alphabet
+     * @return {@code {path, bytes}}
+     * @throws EngineException {@code E_INVALID_PARAMS} for bad input, {@code E_DENIED} outside the roots
+     */
+    public Map<String, Object> writeBase64(String raw, String base64) throws EngineException {
+        if (raw == null || raw.trim().isEmpty()) {
+            throw EngineException.invalid("path is required");
+        }
+        if (base64 == null || base64.isEmpty()) {
+            throw EngineException.invalid("base64 is required");
+        }
+        Path path = resolveWritable(raw);
+        byte[] data;
+        try {
+            data = Base64.getDecoder().decode(base64);
+        } catch (IllegalArgumentException e) {
+            throw EngineException.invalid("base64 is not decodable");
+        }
+        if (data.length > 64L * 1024 * 1024) {
+            throw new EngineException("E_TOO_LARGE", "payload is " + data.length + " bytes, limit is 67108864");
+        }
+        try {
+            Path parent = path.getParent();
+            if (parent != null) {
+                Files.createDirectories(parent);
+            }
+            Files.write(path, data);
+        } catch (IOException e) {
+            throw EngineException.io("cannot write " + path + ": " + e.getMessage(), e);
+        }
+        Map<String, Object> out = new LinkedHashMap<>();
+        out.put("path", path.toString());
+        out.put("bytes", (long) data.length);
+        return out;
+    }
+
     // ------------------------------------------------------------ system.openFolder
 
     /**

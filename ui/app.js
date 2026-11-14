@@ -21,6 +21,7 @@
   Host.ready = (async function () {
     if (Demo) {
       document.documentElement.dataset.theme = Demo.theme || 'light';
+      if (typeof Demo.onNav === 'function') Demo.onNav(setView);
       return { invoke: Demo.invoke, plugin: { theme: Demo.theme || 'light' }, demo: true };
     }
     if (!window.NousPlugin) throw new Error('E_HOST: 缺少宿主桥');
@@ -59,6 +60,8 @@
     }
   };
 
+  Object.defineProperty(ctx, 'settings', { get: function () { return App.settings; } });
+
   function normalize(r) {
     return { status: r.status || 0, body: r.body || '', url: r.url || '', headers: r.headers || {} };
   }
@@ -74,9 +77,10 @@
     results: {},
     queue: [],
     scanning: false,
-    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '' },
+    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true },
     disabled: {},
     filter: null,
+    kind: null,
     counter: 1,
     coverCache: new Map(),
     coversInFlight: 0
@@ -177,11 +181,16 @@
     all.type = 'button';
     all.className = 'chip';
     all.dataset.id = '';
-    all.setAttribute('aria-pressed', String(!App.filter));
+    all.setAttribute('aria-pressed', String(!App.filter && !App.kind));
     all.innerHTML = '<span class="cl"></span><span class="cn"></span>';
     all.querySelector('.cl').textContent = '全部';
     all.querySelector('.cn').textContent = String(total);
-    all.addEventListener('click', function () { App.filter = null; renderFilters(); renderItems(true); });
+    all.addEventListener('click', function () {
+      App.filter = null;
+      App.kind = null;
+      renderFilters();
+      renderItems(true);
+    });
     bar.appendChild(all);
     results.forEach(function (r) {
       if (!r.items.length) return;
@@ -200,10 +209,40 @@
       });
       bar.appendChild(b);
     });
+    var kinds = [
+      { id: 'gallery', label: '漫画', n: App.items.filter(function (it) { return it.kind === 'gallery'; }).length },
+      { id: 'video', label: '视频', n: App.items.filter(function (it) { return it.kind === 'video'; }).length }
+    ].filter(function (k) { return k.n > 0; });
+    if (kinds.length > 1) {
+      var sep = document.createElement('span');
+      sep.className = 'chip-sep';
+      sep.setAttribute('aria-hidden', 'true');
+      bar.appendChild(sep);
+      kinds.forEach(function (k) {
+        var kb = document.createElement('button');
+        kb.type = 'button';
+        kb.className = 'chip';
+        kb.dataset.kind = k.id;
+        kb.setAttribute('aria-pressed', String(App.kind === k.id));
+        kb.innerHTML = '<span class="cl"></span><span class="cn"></span>';
+        kb.querySelector('.cl').textContent = k.label;
+        kb.querySelector('.cn').textContent = String(k.n);
+        kb.addEventListener('click', function () {
+          App.kind = App.kind === k.id ? null : k.id;
+          renderFilters();
+          renderItems(true);
+        });
+        bar.appendChild(kb);
+      });
+    }
   }
 
   function visibleItems() {
-    return App.filter ? App.items.filter(function (it) { return it.source === App.filter; }) : App.items;
+    return App.items.filter(function (it) {
+      if (App.filter && it.source !== App.filter) return false;
+      if (App.kind && it.kind !== App.kind) return false;
+      return true;
+    });
   }
 
   /* Before the first search the grid holds four quiet frames: the shape results
@@ -377,7 +416,7 @@
         }
       });
       App.items = append ? App.items.concat(merged) : merged;
-      if (!append) App.filter = null;
+      if (!append) { App.filter = null; App.kind = null; }
       App.results = res;
       renderItems(!append);
       renderFilters();
@@ -411,7 +450,10 @@
 
   /* CDN edges behind a filtered network drop a body now and then; one retry
    * per page costs little and the module never leaves a half file behind. */
-  async function downloadPage(file, dir, referer) {
+  async function downloadPage(file, dir, referer, page) {
+    if (page && page.num > 0 && App.settings.jmDescramble !== false) {
+      return downloadDescrambled(file, dir, referer, page);
+    }
     var path = dir + '\\' + file.name;
     var last;
     for (var attempt = 0; attempt < 3; attempt++) {
@@ -430,6 +472,55 @@
       }
     }
     throw last;
+  }
+
+  /* 18comic serves page images with their horizontal bands shuffled. The
+   * browser is where a decoder exists, so the page unstacks the bands and the
+   * engine only writes the bytes back. Result is a PNG next to the numbering. */
+  async function downloadDescrambled(file, dir, referer, page) {
+    var path = dir + '\\' + file.name.replace(/\.(jpe?g|webp|png|avif)$/i, '.png');
+    var got = await Host.invoke('http.request', {
+      url: file.url,
+      method: 'GET',
+      binary: true,
+      headers: { 'User-Agent': E.UA, Referer: referer },
+      timeoutMs: 180000
+    });
+    var bytes = E.base64ToBytes(got.bodyBase64 || '');
+    if (!bytes.length) throw new Error('E_HTTP: 图片为空');
+    var mime = (got.headers && got.headers['content-type']) || 'image/jpeg';
+    var bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: mime.split(';')[0] }));
+    var canvas = makeCanvas(bitmap.width, bitmap.height);
+    var g = canvas.getContext('2d');
+    E.jmScramblePlan(page.num, bitmap.height).forEach(function (band) {
+      g.drawImage(bitmap, 0, band.src, bitmap.width, band.h, 0, band.dst, bitmap.width, band.h);
+    });
+    if (bitmap.close) bitmap.close();
+    var blob = await canvasToBlob(canvas);
+    var base64 = await blobToBase64(blob);
+    return Host.invoke('file.writeBase64', { path: path, base64: base64 });
+  }
+
+  function makeCanvas(w, h) {
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+    var c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+
+  function canvasToBlob(canvas) {
+    if (canvas.convertToBlob) return canvas.convertToBlob({ type: 'image/png' });
+    return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
+  }
+
+  function blobToBase64(blob) {
+    return new Promise(function (resolve, reject) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(String(fr.result).split(',')[1] || ''); };
+      fr.onerror = function () { reject(new Error('E_IO: 读不到图片数据')); };
+      fr.readAsDataURL(blob);
+    });
   }
 
   async function runQueue() {
@@ -456,7 +547,7 @@
         await Host.invoke('fs.mkdirs', { path: plan.dir });
         for (var f = 0; f < plan.files.length; f++) {
           var file = plan.files[f];
-          await downloadPage(file, plan.dir, row.item.url);
+          await downloadPage(file, plan.dir, row.item.url, detail.pages[f]);
           row.done = f + 1;
           renderQueue();
         }
@@ -545,6 +636,8 @@
     form.width.value = String(App.settings.width || 3);
     form.start.value = String(App.counter);
     form.jmCookie.value = App.settings.jmCookie || '';
+    form.jmDomain.value = App.settings.jmDomain || '18comic.vip';
+    form.jmDescramble.checked = App.settings.jmDescramble !== false;
   }
 
   function setView(view) {
@@ -554,6 +647,8 @@
     document.querySelector('.sites-wrap').hidden = App.view === 'settings';
     if (App.view === 'settings') fillSettings();
   }
+
+  App.setView = setView;
 
   /* ----------------------------------------------------------------- boot */
 
@@ -584,13 +679,16 @@
       App.settings.sauce = form.sauce.value.trim();
       App.settings.width = Math.min(5, Math.max(2, parseInt(form.width.value, 10) || 3));
       App.settings.jmCookie = form.jmCookie.value.trim();
+      App.settings.jmDomain = (form.jmDomain.value.trim() || '18comic.vip').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+      App.settings.jmDescramble = form.jmDescramble.checked;
       var start = Math.max(1, parseInt(form.start.value, 10) || 1);
       App.counter = start;
       await saveSettings();
       await Host.invoke('storage.set', { key: 'counter', value: App.counter }).catch(function () {});
       if (App.settings.jmCookie) {
-        await Host.invoke('cookie.set', { host: '18comic.vip', cookie: App.settings.jmCookie }).catch(function () {});
-        await Host.invoke('cookie.set', { host: '.18comic.vip', cookie: App.settings.jmCookie }).catch(function () {});
+        var jmHost = App.settings.jmDomain;
+        await Host.invoke('cookie.set', { host: jmHost, cookie: App.settings.jmCookie }).catch(function () {});
+        await Host.invoke('cookie.set', { host: '.' + jmHost, cookie: App.settings.jmCookie }).catch(function () {});
       }
       if (App.settings.root) {
         await Host.invoke('fs.allowRoot', { path: App.settings.root }).catch(function () {});

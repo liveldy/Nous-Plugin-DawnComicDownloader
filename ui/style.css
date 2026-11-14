@@ -47,6 +47,9 @@ html[data-theme="dark"] {
 
 * { box-sizing: border-box; }
 
+/* author `display` rules beat the UA [hidden] rule, so views never disappeared */
+[hidden] { display: none !important; }
+
 html, body { margin: 0; }
 
 body {
@@ -405,6 +408,9 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .chip[aria-pressed="true"] { color: var(--ink); }
 .chip[aria-pressed="true"] .cl { box-shadow: inset 0 -1.5px 0 var(--accent); }
 .chip .cn { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.chip-sep {
+  width: 1px; height: 14px; margin: 0 8px; background: var(--line);
+}
 
 .ghost {
   border: 1px solid var(--line); background: none; border-radius: 2px;
@@ -451,7 +457,13 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .match .use:hover { transform: translateY(-1px); border-color: var(--ink); }
 
-.fields { display: grid; gap: 14px; max-width: 560px; }
+.fields {
+  display: grid; gap: 14px 22px; max-width: 900px;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  align-items: end;
+}
+.fields .check, .fields .save, .fields .saved { grid-column: 1 / -1; }
+.fields .check { justify-self: start; }
 .fields label {
   display: grid; gap: 6px; font-size: 12px; color: var(--muted);
 }
@@ -466,6 +478,12 @@ button { font: inherit; color: inherit; cursor: pointer; }
   outline: none; border-color: var(--ink);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--ink) 10%, transparent);
 }
+.fields .check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--ink); cursor: pointer;
+}
+.fields .check input { width: 15px; height: 15px; accent-color: var(--accent-fill); }
+
 .save {
   justify-self: start; height: 38px; padding: 0 18px;
   border: 1px solid var(--ink); border-radius: 2px;
