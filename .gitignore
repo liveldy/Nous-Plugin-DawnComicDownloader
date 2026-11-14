@@ -5,4 +5,4 @@ shots/*.png
 shots/check/
 shots/dom.html
 node_modules/
-*.log
+*.log.research/
