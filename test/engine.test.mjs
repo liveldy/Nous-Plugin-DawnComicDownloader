@@ -234,3 +234,25 @@ test('18comic wraps the real markup in base64 and page images are ordered', () =
     'https://cdn.example/media/photos/400001/00002.jpg'
   ]);
 });
+test('scramble key uses the file stem, not the name with its suffix', () => {
+  assert.equal(engine.jmStem('https://cdn.example/media/photos/401/00001.jpg?v=2'), '00001');
+  assert.equal(engine.jmStem('00012.webp'), '00012');
+  assert.equal(engine.jmStem('https://cdn.example/media/photos/401/00003'), '00003');
+  assert.notEqual(
+    engine.jmScrambleNum(220980, 300000, engine.jmStem('00001.jpg')),
+    engine.jmScrambleNum(220980, 300000, '00001.jpg'),
+    'hashing the suffix would pick the wrong band count'
+  );
+  assert.equal(engine.jmScrambleNum(220980, 300000, engine.jmStem('00001.jpg')), 16);
+});
+
+test('18comic cards never take a lazy placeholder as the cover', () => {
+  const html =
+    '<a href="/album/401/x/" title="A"><img src="/media/albums/blank.gif"><div class="album-title">A</div></a>' +
+    '<a href="/album/402/y/" title="B"><img data-original="https://cdn.example/media/albums/2.jpg">' +
+    '<div class="album-title">B</div></a>';
+  const cards = engine.parsers.jmCards(html, 'https://18comic.vip');
+  assert.equal(cards.length, 2);
+  assert.equal(cards[0].cover, '');
+  assert.equal(cards[1].cover, 'https://cdn.example/media/albums/2.jpg');
+});

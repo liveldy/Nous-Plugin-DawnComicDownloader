@@ -474,6 +474,15 @@
     return decodeURIComponent(escape(s));
   }
 
+  /* JMComic hashes aid + the file name **without** its suffix
+   * (jm_entity: img_file_name = data_original[x+1:y], "without suffix").
+   * Passing "00001.jpg" instead of "00001" yields a different md5 and therefore
+   * a wrong band count — the page re-stacks into nonsense. */
+  function jmStem(url) {
+    var name = String(url || '').split('/').pop().split('?')[0];
+    return name.replace(/\.[A-Za-z0-9]{1,5}$/, '');
+  }
+
   /* How many horizontal bands an 18comic page image was shuffled into, and
    * therefore how many to re-stack. 0 means "served as is". Same thresholds and
    * the same md5 trick as JMComic's JmImageTool.get_num. */
@@ -559,7 +568,9 @@
       var re = /<a[^>]+href="(\/album\/(\d+)\/[^"]*)"[^>]*>([\s\S]{0,900}?)<\/a>/g, m;
       while ((m = re.exec(html))) {
         var body = m[3];
-        var img = /(?:data-original|data-src|src)="([^"]+)"/.exec(body);
+        var img = /(?:data-original|data-src)="([^"]+)"/.exec(body) || /src="([^"]+)"/.exec(body);
+        var coverUrl = img ? absolute(base, img[1]) : '';
+        if (!/\/media\//.test(coverUrl) || /blank\.(?:gif|png|jpe?g)$/i.test(coverUrl)) coverUrl = '';
         var title = /<div class="[^"]*(?:album-title|title)[^"]*"[^>]*>([\s\S]{0,200}?)<\/div>/.exec(m[0]) ||
           /<span[^>]*class="[^"]*title[^"]*"[^>]*>([\s\S]{0,200}?)<\/span>/.exec(m[0]) ||
           /title="([^"]{2,160})"/.exec(m[0]);
@@ -567,7 +578,7 @@
           id: m[2],
           url: absolute(base, m[1]),
           title: title ? collapse(stripTags(title[1])) : '#' + m[2],
-          cover: img ? absolute(base, img[1]) : '',
+          cover: coverUrl,
           author: '',
           tags: []
         });
@@ -685,8 +696,7 @@
               jm.assertUsable(r, body, '章节 ' + pid);
               var scramble = (/var scramble_id = (\d+);/.exec(body) || [])[1] || meta.scrambleId;
               jm.pageUrls(body, base).forEach(function (url) {
-                var file = url.split('/').pop().split('?')[0];
-                pages.push({ url: url, num: jmScrambleNum(scramble, aid, file), scrambleId: scramble, aid: aid });
+                pages.push({ url: url, num: jmScrambleNum(scramble, aid, jmStem(url)), scrambleId: scramble, aid: aid });
               });
             });
           });
@@ -697,8 +707,7 @@
           }
           if (!pages.length && albumImages.length) {
             albumImages.forEach(function (url) {
-              var file = url.split('/').pop().split('?')[0];
-              pages.push({ url: url, num: jmScrambleNum(meta.scrambleId, aid, file), scrambleId: meta.scrambleId, aid: aid });
+              pages.push({ url: url, num: jmScrambleNum(meta.scrambleId, aid, jmStem(url)), scrambleId: meta.scrambleId, aid: aid });
             });
           }
           if (!pages.length) throw new Error('E_PARSE: 章节内没有图片');
@@ -1259,6 +1268,7 @@
     asciiBytes: asciiBytes,
     md5Hex: md5Hex,
     jmScrambleNum: jmScrambleNum,
+    jmStem: jmStem,
     jmScramblePlan: jmScramblePlan,
     jmDomains: JM.DOMAINS,
     parsers: {
