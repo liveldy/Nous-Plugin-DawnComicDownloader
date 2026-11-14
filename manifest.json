@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.0.18",
+  "version": "1.0.19",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -65,6 +65,14 @@
     }
   },
   "changelog": [
+    {
+      "version": "1.0.19",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "修复 Ahri Gallery 搜不到内容：参数名用错了。站点搜索框把关键词放在 **search_key**（表单字段名，见 ?route=comic/filter 页），而 keyword / search / q / tag 都被服务端忽略——所以此前只能靠“拉最近 3 页按标题本地筛”，几乎总是 0 条。现在直接 ?route=comic/list&search_key=…&page=N，真分页。实测：alun→55 条、FANBOX→108 条/页、zzzzqqqq→0 条（16KB 空结果页）、プール→108 条。",
+        "Ahri 的能力标记改为支持文字检索与标签；翻页依据页面里是否存在 page=N+1 的链接，不再靠条数猜。"
+      ]
+    },
     {
       "version": "1.0.18",
       "publishedAt": "2026-11-14",

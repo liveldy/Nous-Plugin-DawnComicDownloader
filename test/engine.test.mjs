@@ -19,7 +19,7 @@ test('six sources are registered with their capability flags', () => {
   assert.deepEqual(info.map(s => s.id), ['niacg', 'ahri', 'jm', 'hentaileague', 'rule34us', 'r34video']);
   const byId = Object.fromEntries(info.map(s => [s.id, s]));
   assert.equal(byId.niacg.caps.text, true);
-  assert.equal(byId.ahri.caps.text, false, 'ahri-gallery has no server-side text search');
+  assert.equal(byId.ahri.caps.text, true, 'ahri-gallery searches through search_key');
   assert.equal(byId.jm.challenge, true, '18comic needs a Cloudflare clearance cookie');
   assert.equal(byId.r34video.kind, 'video');
   assert.equal(byId.hentaileague.kind, 'video');
@@ -255,4 +255,19 @@ test('18comic cards never take a lazy placeholder as the cover', () => {
   assert.equal(cards.length, 2);
   assert.equal(cards[0].cover, '');
   assert.equal(cards[1].cover, 'https://cdn.example/media/albums/2.jpg');
+});
+test('ahri search uses the site\'s own search_key parameter', async () => {
+  const spec = engine.getSource('ahri');
+  let seen = '';
+  const card = '<div class="image gallery-group col-2"><a class="apo" href="index.php?route=comic/article&comic_id=1399923&c_id=832e42a5a5224ad9a6bbaaae5b37a918">' +
+    '<img src="//c2.example/image/cover/h300/b6/3c/4315208.avif"></a>' +
+    '<h5 class="title"><a data-toggle="tooltip" title="[alun]2026年短篇合集"><span class="d">[alun]2026年短篇合集</span></a></h5></div>';
+  const ctx = { get: async (url) => { seen = url; return { status: 200, body: card, headers: {} }; } };
+  const res = await spec.search(ctx, 'alun', 2);
+  assert.match(seen, /route=comic\/list/);
+  assert.match(seen, /search_key=alun/);
+  assert.match(seen, /page=2/);
+  assert.equal(res.items.length, 1);
+  assert.equal(res.items[0].id, '1399923');
+  assert.equal(res.items[0].title, '[alun]2026年短篇合集');
 });

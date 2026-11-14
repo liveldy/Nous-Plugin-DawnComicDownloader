@@ -280,9 +280,9 @@
     host: 'ahri-gallery.com',
     base: 'https://ahri-gallery.com',
     kind: 'gallery',
-    caps: { text: false, browse: true, tag: false, image: false },
+    caps: { text: true, browse: true, tag: true, image: false },
     challenge: false,
-    note: 'OpenCart 改造站：列表 ?route=comic/list，阅读器给出 IMAGE_SERVER/IMAGE_FOLDER/Image_List。站内无文字检索，按标题本地筛选。',
+    note: 'OpenCart 改造站：检索 ?route=comic/list&search_key=（站点搜索框的参数名），列表同名，阅读器给出 IMAGE_SERVER/IMAGE_FOLDER/Image_List。',
 
     parseCards: function (html) {
       var out = [];
@@ -308,30 +308,21 @@
       return dedupe(out);
     },
 
+    /* The site's own search form posts route=comic/list with **search_key**
+     * (its input name). keyword / search / q are ignored by the server, which is
+     * why this source used to come back empty. */
     search: function (ctx, query, page) {
-      var tokens = tokenize(query);
-      var pages = tokens.length ? Math.max(3, page || 1) : (page || 1);
-      return this.browse(ctx, page).then(function (first) {
-        if (!tokens.length) return first;
-        var items = first.items;
-        var chain = Promise.resolve();
-        for (var p = 2; p <= pages; p++) {
-          (function (pn) {
-            chain = chain.then(function () {
-              return ahri.browse(ctx, pn).then(function (r) { items = items.concat(r.items); });
-            });
-          })(p);
-        }
-        return chain.then(function () {
-          var hit = items.filter(function (it) {
-            var hay = (it.title + ' ' + it.author).toLowerCase();
-            return tokens.every(function (t) { return hay.indexOf(t) >= 0; });
-          });
-          return { items: hit, hasMore: items.length > 0, note: '本地标题筛选' };
-        });
+      var p = Math.max(1, page || 1);
+      var q = collapse(query);
+      if (!q) return this.browse(ctx, p);
+      var url = ahri.base + '/index.php?route=comic/list&search_key=' + encodeURIComponent(q) + '&page=' + p;
+      return ctx.get(url, { headers: baseHeaders(ahri.base + '/') }).then(function (res) {
+        var html = res.body || '';
+        var items = ahri.parseCards(html);
+        var more = new RegExp('page=' + (p + 1) + '(?![0-9])').test(html);
+        return { items: items, hasMore: items.length > 0 && more, note: items.length ? '' : '该站无匹配' };
       });
     },
-
     browse: function (ctx, page) {
       var p = Math.max(1, page || 1);
       var url = ahri.base + '/index.php?route=comic/list' + (p > 1 ? '&page=' + p : '');
