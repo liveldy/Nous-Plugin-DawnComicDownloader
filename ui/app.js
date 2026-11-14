@@ -526,8 +526,27 @@
     });
     if (bitmap.close) bitmap.close();
     var blob = await canvasToBlob(canvas);
-    var base64 = await blobToBase64(blob);
-    return Host.invoke('file.writeBase64', { path: path, base64: base64 });
+    var buffer = await blob.arrayBuffer();
+    await writeBytes(path, new Uint8Array(buffer));
+    return { path: path, bytes: buffer.byteLength };
+  }
+
+  /* One host request may not exceed 1 MiB, so a decoded page is written in
+   * 384 KiB chunks: first call truncates, the rest append. */
+  async function writeBytes(path, bytes) {
+    var chunk = 384 * 1024;
+    var offset = 0;
+    var first = true;
+    while (offset < bytes.length) {
+      var slice = bytes.subarray(offset, Math.min(offset + chunk, bytes.length));
+      await Host.invoke('file.writeBase64', {
+        path: path,
+        base64: E.bytesToBase64(slice),
+        append: !first
+      });
+      first = false;
+      offset += chunk;
+    }
   }
 
   function makeCanvas(w, h) {
@@ -543,14 +562,6 @@
     return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
   }
 
-  function blobToBase64(blob) {
-    return new Promise(function (resolve, reject) {
-      var fr = new FileReader();
-      fr.onload = function () { resolve(String(fr.result).split(',')[1] || ''); };
-      fr.onerror = function () { reject(new Error('E_IO: 读不到图片数据')); };
-      fr.readAsDataURL(blob);
-    });
-  }
 
   /* The host can open an isolated window, let the user pass the Cloudflare
    * challenge, and hand back the cookies for the declared domain — with the

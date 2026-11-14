@@ -175,7 +175,8 @@ public final class Engine {
             case "fs.delete":
                 return files.delete(Json.str(params, "path", ""));
             case "file.writeBase64":
-                return files.writeBase64(Json.str(params, "path", ""), Json.str(params, "base64", ""));
+                return files.writeBase64(Json.str(params, "path", ""), Json.str(params, "base64", ""),
+                        Json.bool(params, "append", false));
             case "file.readBase64":
                 return files.readBase64(Json.str(params, "path", ""),
                         Json.num(params, "maxBytes", 8L * 1024 * 1024, 1L, 64L * 1024 * 1024));

@@ -7,6 +7,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardOpenOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
@@ -389,12 +390,16 @@ public final class FileService {
      * post-processed an image (18comic ships its pages with shuffled horizontal bands, and the
      * browser is where the image decoder lives).
      *
+     * <p>A single host request may not exceed 1 MiB, so callers send the payload in chunks:
+     * the first call with {@code append=false}, the rest with {@code append=true}.</p>
+     *
      * @param raw    file path
      * @param base64 payload, standard alphabet
-     * @return {@code {path, bytes}}
+     * @param append append to an existing file instead of replacing it
+     * @return {@code {path, bytes}} where bytes is this chunk
      * @throws EngineException {@code E_INVALID_PARAMS} for bad input, {@code E_DENIED} outside the roots
      */
-    public Map<String, Object> writeBase64(String raw, String base64) throws EngineException {
+    public Map<String, Object> writeBase64(String raw, String base64, boolean append) throws EngineException {
         if (raw == null || raw.trim().isEmpty()) {
             throw EngineException.invalid("path is required");
         }
@@ -416,7 +421,11 @@ public final class FileService {
             if (parent != null) {
                 Files.createDirectories(parent);
             }
-            Files.write(path, data);
+            if (append) {
+                Files.write(path, data, StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+            } else {
+                Files.write(path, data, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+            }
         } catch (IOException e) {
             throw EngineException.io("cannot write " + path + ": " + e.getMessage(), e);
         }
