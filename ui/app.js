@@ -1168,6 +1168,27 @@
     return folder;
   }
 
+  function favRenameFolder(folderId, name) {
+    var clean = String(name || '').trim().slice(0, 24);
+    var folder = favFolder(folderId);
+    if (!folder || !clean) return false;
+    folder.name = clean;
+    favSave();
+    renderFavs();
+    return true;
+  }
+
+  function favDeleteFolder(folderId) {
+    App.fav.folders = (App.fav.folders || []).filter(function (f) { return f.id !== folderId; });
+    if (App.fav.items) delete App.fav.items[folderId];
+    if (App.fav.active === folderId) {
+      App.fav.active = App.fav.folders.length ? App.fav.folders[0].id : '';
+    }
+    favSave();
+    renderFavs();
+    paintBookmarks();
+  }
+
   function favFolder(folderId) {
     return (App.fav.folders || []).filter(function (f) { return f.id === folderId; })[0] || null;
   }
@@ -1219,13 +1240,12 @@
     var bar = $('favFolders');
     var grid = $('favGrid');
     var blank = $('favBlank');
+    var tools = $('favTools');
     if (!bar || !grid) return;
     var folders = App.fav.folders || [];
-    if (!folders.length) {
-      App.fav.active = '';
-    } else if (!favFolder(App.fav.active)) {
-      App.fav.active = folders[0].id;
-    }
+    if (!folders.length) App.fav.active = '';
+    else if (!favFolder(App.fav.active)) App.fav.active = folders[0].id;
+
     bar.textContent = '';
     folders.forEach(function (f) {
       var b = document.createElement('button');
@@ -1236,11 +1256,15 @@
       b.querySelector('.n').textContent = String(favCount(f.id));
       b.addEventListener('click', function () {
         App.fav.active = f.id;
+        $('favEditWrap').hidden = true;
         favSave();
         renderFavs();
       });
       bar.appendChild(b);
     });
+
+    if (tools) tools.hidden = !folders.length;
+
     grid.textContent = '';
     var list = (App.fav.items || {})[App.fav.active] || [];
     list.forEach(function (snap) {
@@ -1251,9 +1275,14 @@
       var img = document.createElement('img');
       img.alt = '';
       shot.appendChild(img);
-      var title = document.createElement('p');
-      title.className = 'by';
-      title.textContent = snap.title;
+      var meta = document.createElement('p');
+      meta.className = 'by';
+      var nameEl = document.createElement('strong');
+      nameEl.textContent = snap.title;
+      var srcEl = document.createElement('span');
+      srcEl.textContent = snap.sourceLabel + (snap.kind === 'video' ? ' · 视频' : '');
+      meta.appendChild(nameEl);
+      meta.appendChild(srcEl);
       var row = document.createElement('div');
       row.className = 'row';
       var pull = document.createElement('button');
@@ -1272,15 +1301,18 @@
       row.appendChild(pull);
       row.appendChild(drop);
       cell.appendChild(shot);
-      cell.appendChild(title);
+      cell.appendChild(meta);
       cell.appendChild(row);
       grid.appendChild(cell);
       requestCover(snap.cover, img, snap.url);
     });
+
     blank.hidden = list.length > 0 || !folders.length;
-    if (!folders.length) blank.textContent = '还没有收藏夹。在结果卡片左上角的书签里建一个，或在搜索页收藏。';
+    if (!folders.length) blank.textContent = '还没有收藏夹。用上面的输入框建一个，再回搜索页点卡片左上角的书签。';
     else if (!list.length) blank.textContent = '这个收藏夹还是空的。回到搜索页，点卡片左上角的书签即可收藏。';
+    if (App.view === 'favs') paintBookmarks();
   }
+
 
   function favToItem(snap) {
     return {
@@ -1427,6 +1459,52 @@
       if (App.settings.root) Host.invoke('system.openFolder', { path: App.settings.root }).catch(function () {});
     });
     $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
+    if ($('favAddFolder')) {
+      $('favAddFolder').addEventListener('click', function () {
+        var folder = favCreate($('favFolderName').value);
+        if (!folder) return;
+        App.fav.active = folder.id;
+        $('favFolderName').value = '';
+        favSave();
+        renderFavs();
+        toast('已建立「' + folder.name + '」');
+      });
+      $('favFolderName').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); $('favAddFolder').click(); }
+      });
+      $('favRename').addEventListener('click', function () {
+        var folder = favFolder(App.fav.active);
+        if (!folder) return;
+        $('favEditName').value = folder.name;
+        $('favEditWrap').hidden = false;
+        $('favEditName').focus();
+      });
+      $('favEditSave').addEventListener('click', function () {
+        if (favRenameFolder(App.fav.active, $('favEditName').value)) {
+          $('favEditWrap').hidden = true;
+          toast('已重命名');
+        }
+      });
+      $('favEditCancel').addEventListener('click', function () { $('favEditWrap').hidden = true; });
+      $('favEditName').addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); $('favEditSave').click(); }
+      });
+      var armed = 0;
+      $('favDelete').addEventListener('click', function () {
+        var folder = favFolder(App.fav.active);
+        if (!folder) return;
+        if (Date.now() - armed > 3000) {
+          armed = Date.now();
+          $('favDelete').textContent = '确认删除「' + folder.name + '」';
+          setTimeout(function () { $('favDelete').textContent = '删除收藏夹'; }, 3200);
+          return;
+        }
+        armed = 0;
+        $('favDelete').textContent = '删除收藏夹';
+        favDeleteFolder(folder.id);
+        toast('已删除收藏夹');
+      });
+    }
     if ($('favNewBtn')) {
       $('favNewBtn').addEventListener('click', function () {
         var folder = favCreate($('favNewName').value);

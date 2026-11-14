@@ -153,8 +153,23 @@
 <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
 
 <section class="wrap panel" id="favs" hidden>
-  <h2>收藏</h2>
+  <div class="favhead">
+    <h2>收藏</h2>
+    <div class="favactions">
+      <input id="favFolderName" type="text" placeholder="新建收藏夹" spellcheck="false" aria-label="新建收藏夹名称">
+      <button class="ghost-btn" type="button" id="favAddFolder">新建</button>
+    </div>
+  </div>
   <div class="favbar" id="favFolders"></div>
+  <div class="favtools" id="favTools" hidden>
+    <button class="ghost-btn" type="button" id="favRename">重命名</button>
+    <button class="ghost-btn" type="button" id="favDelete">删除收藏夹</button>
+    <span class="favedit" id="favEditWrap" hidden>
+      <input id="favEditName" type="text" spellcheck="false" aria-label="收藏夹新名称">
+      <button class="ghost-btn" type="button" id="favEditSave">保存</button>
+      <button class="ghost-btn" type="button" id="favEditCancel">取消</button>
+    </span>
+  </div>
   <div class="grid" id="favGrid"></div>
   <p class="blank" id="favBlank" hidden></p>
 </section>
