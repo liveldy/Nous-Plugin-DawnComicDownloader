@@ -103,6 +103,20 @@
         return {status: r.status, body: body, url: params.url, headers: {'content-type': 'text/html'}};
       }
       if (method === 'storage.get') {
+        if (params.key === 'fav') {
+          return {
+            folders: [{id: 'f1', name: '本子', at: 1}, {id: 'f2', name: 'COS', at: 2}],
+            items: {
+              f1: [
+                {uid: 'niacg:163985', source: 'niacg', sourceLabel: 'Xpicvid', id: '163985', title: '[氏とろん] プールの臨時コーチ', author: 'citron', cover: '../shots/covers/c01.jpg', kind: 'gallery', url: 'https://www.niacg.com/moehome-3-163985.html', pages: []},
+                {uid: 'rule34:13735761', source: 'rule34us', sourceLabel: 'Rule34', id: '13735761', title: '1girls · 3d · big ass · big breasts', author: '', cover: '../shots/covers/c08.jpg', kind: 'gallery', url: 'https://rule34.us/index.php?r=posts/view&id=13735761', pages: []},
+                {uid: 'r34video:3144627', source: 'r34video', sourceLabel: 'Rule34Video', id: '3144627', title: 'tests', author: '', cover: '../shots/covers/c11.jpg', kind: 'video', url: 'https://rule34video.com/video/3144627/tests/', pages: ['https://rule34video.com/get_file/x.mp4']}
+              ],
+              f2: []
+            },
+            active: 'f1'
+          };
+        }
         if (params.key === 'counter') return 7;
         if (params.key === 'settings') return {root: 'D:\\Manga', width: 3, start: 1, sauce: '', jmCookie: ''};
         return null;

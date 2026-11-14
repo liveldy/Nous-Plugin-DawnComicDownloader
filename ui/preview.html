@@ -152,6 +152,21 @@
 
 <p class="toast" id="toast" role="status" aria-live="polite" hidden></p>
 
+<section class="wrap panel" id="favs" hidden>
+  <h2>收藏</h2>
+  <div class="favbar" id="favFolders"></div>
+  <div class="grid" id="favGrid"></div>
+  <p class="blank" id="favBlank" hidden></p>
+</section>
+
+<div class="favpop" id="favPop" hidden>
+  <div class="favpop-list" id="favPopList"></div>
+  <div class="favpop-new">
+    <input id="favNewName" type="text" placeholder="新建收藏夹" spellcheck="false" aria-label="新建收藏夹">
+    <button type="button" id="favNewBtn">建立</button>
+  </div>
+</div>
+
 <script>
   /* Runs before anything else: a parse error or a rejected promise in the
    * bundle must say so on screen instead of leaving a dead panel. */

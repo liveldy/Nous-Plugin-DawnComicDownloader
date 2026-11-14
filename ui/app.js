@@ -324,6 +324,19 @@
     card.addEventListener('click', function () { togglePick(item, card); });
     requestCover(item.cover, card.querySelector('img'), item.url);
 
+    var mark = document.createElement('button');
+    mark.type = 'button';
+    mark.className = 'bookmark';
+    mark.dataset.uid = item.uid;
+    mark.setAttribute('aria-label', '收藏');
+    mark.title = '收藏';
+    mark.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4h10v16l-5-4-5 4z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>';
+    mark.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openFavPop(item, mark);
+    });
+    wrap.appendChild(mark);
+    if ((App.fav.folders || []).some(function (f) { return favHas(f.id, item.uid); })) mark.dataset.saved = 'true';
     if (item.cover) {
       var save = document.createElement('button');
       save.type = 'button';
@@ -517,6 +530,9 @@
     $('blank').hidden = true;
     var active = E.sourceInfo().map(function (s) { return s.id; }).filter(function (id) { return !App.disabled[id]; });
     if (only) active = [only];
+    /* With a source filter on, “more” may only advance that source — otherwise new
+     * rows land in categories the user is not looking at. */
+    if (append && App.filter) active = [App.filter];
 
     /* Each source keeps its own page cursor: they paginate at different sizes,
      * and one of them (Xpicvid) only reacts to a page number on its result URL. */
@@ -1073,6 +1089,208 @@
     $('start').disabled = false;
   }
 
+
+  /* ------------------------------------------------------------ favourites */
+
+  /* A folder is a name and an id; an item is a compact snapshot, because the
+   * plugin storage is a single JSON value with a modest cap. Videos keep their
+   * page url so they can still be downloaded straight from a folder. */
+  var FAV_KEY = 'fav';
+  var FAV_LIMIT = 200;
+
+  function favDefault() { return { folders: [], items: {}, active: '' }; }
+
+  function favLoad() {
+    App.fav = App.fav || favDefault();
+    Host.store('storage.get', { key: FAV_KEY }).then(function (value) {
+      if (value && typeof value === 'object' && Array.isArray(value.folders)) {
+        App.fav = value;
+        if (!App.fav.items) App.fav.items = {};
+        renderFavs();
+      }
+    }).catch(function () {});
+  }
+
+  function favSave() {
+    return Host.store('storage.set', { key: FAV_KEY, value: App.fav }).catch(function () {});
+  }
+
+  function favCount(folderId) {
+    return ((App.fav.items || {})[folderId] || []).length;
+  }
+
+  function favTotal() {
+    var total = 0;
+    Object.keys(App.fav.items || {}).forEach(function (k) { total += App.fav.items[k].length; });
+    return total;
+  }
+
+  function favSnapshot(item) {
+    var snap = {
+      uid: item.uid, source: item.source, sourceLabel: item.sourceLabel,
+      id: item.id, title: String(item.title || '').slice(0, 90),
+      author: String(item.author || '').slice(0, 40),
+      cover: item.cover || '', kind: item.kind, url: item.url || '',
+      pages: item.kind === 'video' && item.raw && item.raw.pages ? item.raw.pages.slice(0, 1) : []
+    };
+    return snap;
+  }
+
+  function favHas(folderId, uid) {
+    return ((App.fav.items || {})[folderId] || []).some(function (it) { return it.uid === uid; });
+  }
+
+  function favAdd(item, folderId) {
+    var list = App.fav.items[folderId] || (App.fav.items[folderId] = []);
+    if (list.some(function (it) { return it.uid === item.uid; })) return false;
+    if (favTotal() >= FAV_LIMIT) { toast('收藏已满 ' + FAV_LIMIT + ' 项'); return false; }
+    list.unshift(favSnapshot(item));
+    favSave();
+    renderFavs();
+    return true;
+  }
+
+  function favRemove(folderId, uid) {
+    App.fav.items[folderId] = (App.fav.items[folderId] || []).filter(function (it) { return it.uid !== uid; });
+    favSave();
+    renderFavs();
+    paintBookmarks();
+  }
+
+  function favCreate(name) {
+    var clean = String(name || '').trim();
+    if (!clean) return null;
+    var folder = { id: 'f' + Date.now().toString(36), name: clean.slice(0, 24), at: Date.now() };
+    App.fav.folders.push(folder);
+    App.fav.items[folder.id] = [];
+    favSave();
+    renderFavs();
+    return folder;
+  }
+
+  function favFolder(folderId) {
+    return (App.fav.folders || []).filter(function (f) { return f.id === folderId; })[0] || null;
+  }
+
+  function paintBookmarks() {
+    document.querySelectorAll('.bookmark').forEach(function (btn) {
+      var uid = btn.dataset.uid;
+      var saved = (App.fav.folders || []).some(function (f) { return favHas(f.id, uid); });
+      btn.setAttribute('data-saved', String(saved));
+    });
+  }
+
+  var favPopItem = null;
+
+  function openFavPop(item, anchor) {
+    var pop = $('favPop');
+    favPopItem = item;
+    var list = $('favPopList');
+    list.textContent = '';
+    var folders = App.fav.folders || [];
+    if (!folders.length) {
+      var empty = document.createElement('div');
+      empty.className = 'empty';
+      empty.textContent = '还没有收藏夹，先建一个';
+      list.appendChild(empty);
+    }
+    folders.forEach(function (f) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.innerHTML = '<span class="t"></span><span class="n"></span>';
+      b.querySelector('.t').textContent = f.name;
+      b.querySelector('.n').textContent = favHas(f.id, item.uid) ? '已收藏' : String(favCount(f.id));
+      b.addEventListener('click', function () {
+        if (favHas(f.id, item.uid)) favRemove(f.id, item.uid);
+        else if (favAdd(item, f.id)) toast('已收藏到「' + f.name + '」');
+        paintBookmarks();
+        pop.hidden = true;
+      });
+      list.appendChild(b);
+    });
+    var rect = anchor.getBoundingClientRect();
+    pop.hidden = false;
+    pop.style.left = Math.max(8, Math.min(rect.left, window.innerWidth - 244)) + 'px';
+    pop.style.top = Math.min(rect.bottom + 6, window.innerHeight - 260) + 'px';
+    $('favNewName').value = '';
+  }
+
+  function renderFavs() {
+    var bar = $('favFolders');
+    var grid = $('favGrid');
+    var blank = $('favBlank');
+    if (!bar || !grid) return;
+    var folders = App.fav.folders || [];
+    if (!folders.length) {
+      App.fav.active = '';
+    } else if (!favFolder(App.fav.active)) {
+      App.fav.active = folders[0].id;
+    }
+    bar.textContent = '';
+    folders.forEach(function (f) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(App.fav.active === f.id));
+      b.innerHTML = '<span class="t"></span><span class="n"></span>';
+      b.querySelector('.t').textContent = f.name;
+      b.querySelector('.n').textContent = String(favCount(f.id));
+      b.addEventListener('click', function () {
+        App.fav.active = f.id;
+        favSave();
+        renderFavs();
+      });
+      bar.appendChild(b);
+    });
+    grid.textContent = '';
+    var list = (App.fav.items || {})[App.fav.active] || [];
+    list.forEach(function (snap) {
+      var cell = document.createElement('div');
+      cell.className = 'favcard';
+      var shot = document.createElement('span');
+      shot.className = 'shot';
+      var img = document.createElement('img');
+      img.alt = '';
+      shot.appendChild(img);
+      var title = document.createElement('p');
+      title.className = 'by';
+      title.textContent = snap.title;
+      var row = document.createElement('div');
+      row.className = 'row';
+      var pull = document.createElement('button');
+      pull.type = 'button';
+      pull.textContent = '加入队列';
+      pull.addEventListener('click', function () {
+        if (isQueued(snap.uid)) { toast('已经在队列里'); return; }
+        App.queue.push({ uid: snap.uid, item: favToItem(snap), state: 'queued', done: 0, total: 0, msg: '' });
+        renderQueue();
+        toast('已加入下载队列');
+      });
+      var drop = document.createElement('button');
+      drop.type = 'button';
+      drop.textContent = '移除';
+      drop.addEventListener('click', function () { favRemove(App.fav.active, snap.uid); });
+      row.appendChild(pull);
+      row.appendChild(drop);
+      cell.appendChild(shot);
+      cell.appendChild(title);
+      cell.appendChild(row);
+      grid.appendChild(cell);
+      requestCover(snap.cover, img, snap.url);
+    });
+    blank.hidden = list.length > 0 || !folders.length;
+    if (!folders.length) blank.textContent = '还没有收藏夹。在结果卡片左上角的书签里建一个，或在搜索页收藏。';
+    else if (!list.length) blank.textContent = '这个收藏夹还是空的。回到搜索页，点卡片左上角的书签即可收藏。';
+  }
+
+  function favToItem(snap) {
+    return {
+      uid: snap.uid, source: snap.source, sourceLabel: snap.sourceLabel, id: snap.id,
+      title: snap.title, author: snap.author, tags: [], cover: snap.cover, kind: snap.kind,
+      pages: (snap.pages || []).length, duration: '', url: snap.url,
+      raw: { id: snap.id, url: snap.url, title: snap.title, cover: snap.cover, author: snap.author, tags: [], pages: snap.pages || [], extra: {} }
+    };
+  }
+
   /* ---------------------------------------------------------- image mode */
 
   /* A dropped screenshot can be several megabytes, and the host refuses a
@@ -1175,10 +1393,12 @@
   }
 
   function setView(view) {
-    App.view = view === 'settings' ? 'settings' : 'search';
+    App.view = view === 'settings' ? 'settings' : (view === 'favs' ? 'favs' : 'search');
+    if (App.view === 'favs') renderFavs();
     $('settings').hidden = App.view !== 'settings';
-    document.querySelector('.shell').hidden = App.view === 'settings';
-    document.querySelector('.sites-wrap').hidden = App.view === 'settings';
+    if ($('favs')) $('favs').hidden = App.view !== 'favs';
+    document.querySelector('.shell').hidden = App.view === 'settings' || App.view === 'favs';
+    document.querySelector('.sites-wrap').hidden = App.view === 'settings' || App.view === 'favs';
     if (App.view === 'settings') fillSettings();
   }
 
@@ -1193,7 +1413,7 @@
       setMode('text');
       runSearch(1, false);
     });
-    $('more').addEventListener('click', function () { runSearch(App.page + 1, true); });
+    $('more').addEventListener('click', function () { runSearch(null, true); });
     document.querySelectorAll('.mode').forEach(function (b) {
       b.addEventListener('click', function () { setMode(b.dataset.mode); });
     });
@@ -1207,6 +1427,23 @@
       if (App.settings.root) Host.invoke('system.openFolder', { path: App.settings.root }).catch(function () {});
     });
     $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
+    if ($('favNewBtn')) {
+      $('favNewBtn').addEventListener('click', function () {
+        var folder = favCreate($('favNewName').value);
+        if (!folder) return;
+        App.fav.active = folder.id;
+        favSave();
+        renderFavs();
+        $('favNewName').value = '';
+        if (favPopItem) { toast('已建立「' + folder.name + '」'); $('favPop').hidden = true; }
+      });
+    }
+    document.addEventListener('click', function (e) {
+      var pop = $('favPop');
+      if (!pop || pop.hidden) return;
+      if (pop.contains(e.target) || (e.target.closest && e.target.closest('.bookmark'))) return;
+      pop.hidden = true;
+    });
     if ($('jmProbe')) $('jmProbe').addEventListener('click', probeJm);
     if ($('pixivOpen')) {
       $('pixivOpen').addEventListener('click', function () {
@@ -1294,6 +1531,7 @@
       await loadState();
       E.setUserAgent(App.settings.ua || '');
       renderQueue();
+      favLoad();
       if (App.settings.root) {
         await Host.invoke('fs.allowRoot', { path: App.settings.root }).catch(function () {});
       }

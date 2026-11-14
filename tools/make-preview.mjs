@@ -53,6 +53,25 @@ const settings = empty.replace('</body>', nav + '</body>')
   .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview settings</title>');
 await fs.writeFile(path.join(root, 'ui/preview-settings.html'), settings);
 
+const favpop = `<script>
+  setTimeout(function () {
+    var b = document.querySelector('.bookmark');
+    if (b) b.click();
+  }, 2600);
+</script>
+`;
+await fs.writeFile(path.join(root, 'ui/preview-favpop.html'),
+  results.replace('</body>', favpop + '</body>')
+    .replace('<title>破晓漫画下载器 · preview</title>', '<title>破晓漫画下载器 · preview favpop</title>'));
+
+const favs = `<script>
+  setTimeout(function () { if (window.__DAWN_NAV__) window.__DAWN_NAV__('favs'); }, 600);
+</script>
+`;
+await fs.writeFile(path.join(root, 'ui/preview-favs.html'),
+  empty.replace('</body>', favs + '</body>')
+    .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview favs</title>'));
+
 const picker = `<script>
   // design review: the folder browser the page falls back to
   setTimeout(function () { if (window.__DAWN_NAV__) window.__DAWN_NAV__('settings'); }, 400);
