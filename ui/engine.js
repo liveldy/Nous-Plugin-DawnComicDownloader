@@ -666,6 +666,7 @@
         var html = jm.unwrap(res.body);
         jm.assertUsable(res, html, '本子详情');
         var meta = jm.albumMeta(html);
+        var albumImages = jm.pageUrls(html, base);
         var chapters = meta.chapters.length ? meta.chapters : [aid];
         var queue = chapters.slice(0, 20);
         var pages = [];
@@ -684,6 +685,12 @@
           });
         });
         return chain.then(function () {
+          if (!pages.length && albumImages.length) {
+            albumImages.forEach(function (url) {
+              var file = url.split('/').pop().split('?')[0];
+              pages.push({ url: url, num: jmScrambleNum(meta.scrambleId, aid, file), scrambleId: meta.scrambleId, aid: aid });
+            });
+          }
           if (!pages.length) throw new Error('E_PARSE: 章节内没有图片');
           return {
             meta: { title: meta.title || item.title, author: meta.authors[0] || '', tags: meta.tags.slice(0, 10) },
@@ -694,32 +701,55 @@
       });
     },
 
-    /* 18comic challenges /photo/ harder than /search/ and /album/. Retry once
-     * after a pause, then try the forms the site has used for chapter pages. */
+    /* 18comic challenges /photo/ harder than /search/ and /album/. Try the URL
+     * forms the site has used, with and without a Referer, then the reader's own
+     * ajax endpoint; every attempt is recorded so the failure names what the
+     * site actually answered. */
     fetchChapter: function (ctx, base, aid, pid, meta) {
-      var referer = base + '/album/' + aid + '/';
-      var forms = ['/photo/' + pid + '/', '/photo/' + pid, '/chapter/' + pid + '/'];
-      var header = baseHeaders(referer, true);
-      var attempt = function (index) {
-        if (index >= forms.length) {
-          return ctx.get(base + forms[0], { headers: header });
+      var album = base + '/album/' + aid + '/';
+      var variants = [
+        { url: base + '/photo/' + pid + '/', referer: album, tag: '/photo/…/' },
+        { url: base + '/photo/' + pid, referer: album, tag: '/photo/…' },
+        { url: base + '/photo/' + pid + '/', referer: '', tag: '/photo/…/ 无 Referer' },
+        { url: base + '/chapter/' + pid + '/', referer: album, tag: '/chapter/…/' },
+        { url: base + '/chapter_view_template?' + [
+          'id=' + pid, 'mode=vertical', 'page=0', 'app_img_shunt=1', 'express=off', 'v=' + Date.now()
+        ].join('&'), referer: album, tag: '/chapter_view_template' }
+      ];
+      var tried = [];
+      var index = 0;
+      var next = function () {
+        if (index >= variants.length) {
+          var msg = 'E_CHALLENGE: 章节 ' + pid + ' 全部路径被拦：[' + tried.join('；') + ']';
+          throw new Error(msg);
         }
-        return ctx.get(base + forms[index], { headers: header }).then(function (res) {
-          var blocked = (res.status === 403 || res.status === 429 || res.status === 503 ||
-            jm.challengeCheck(jm.unwrap(res.body)));
-          if (!blocked) return res;
-          return new Promise(function (r) { setTimeout(r, 1500); }).then(function () {
-            return ctx.get(base + forms[index], { headers: header }).then(function (again) {
-              var stillBlocked = (again.status === 403 || again.status === 429 || again.status === 503 ||
-                jm.challengeCheck(jm.unwrap(again.body)));
-              return stillBlocked ? attempt(index + 1) : again;
-            });
-          });
-        }, function () { return attempt(index + 1); });
+        var v = variants[index++];
+        var headers = baseHeaders(v.referer, true);
+        if (!v.referer) delete headers.Referer;
+        return ctx.get(v.url, { headers: headers }).then(function (res) {
+          var body = jm.unwrap(res.body);
+          var blocked = res.status === 403 || res.status === 429 || res.status === 451 || res.status === 503 ||
+            jm.challengeCheck(body);
+          var images = jm.pageUrls(body, base);
+          tried.push(v.tag + ' ' + res.status + '/' + body.length + 'B' + (images.length ? '/' + images.length + '张' : ''));
+          if (!blocked && images.length) return res;
+          if (!blocked && !images.length) {
+            // a 200 without images is a different page (login wall, empty chapter); keep looking
+            return next();
+          }
+          return new Promise(function (r) { setTimeout(r, 1200); })
+            .then(function () { return ctx.get(v.url, { headers: headers }); })
+            .then(function (again) {
+              var body2 = jm.unwrap(again.body);
+              var stillBlocked = again.status === 403 || again.status === 429 || again.status === 503 ||
+                jm.challengeCheck(body2);
+              if (stillBlocked) { tried[tried.length - 1] += '（重试仍拦）'; return next(); }
+              return again;
+            }, function () { return next(); });
+        }, function () { return next(); });
       };
-      return attempt(0);
+      return next();
     },
-
     pageUrls: function (html, base) {
       var urls = [];
       var re = /data-original="([^"]+)"/g, m;
