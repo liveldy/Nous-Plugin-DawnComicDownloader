@@ -38,7 +38,7 @@
         } catch (err) {
           var msg = String(err && err.message ? err.message : err);
           if (/E_UNSUPPORTED/.test(msg)) {
-            throw new Error('E_MODULE: 运行模块不支持 ' + method + '（模块 ' + (App.engineVersion || '未知') + '）。插件页需要 1.0.4 及以上模块，请在插件管理里重装一次以更新模块。');
+            throw new Error('E_MODULE: 模块 ' + (App.engineVersion || '未知') + ' 不支持 ' + method + '。插件页与模块版本不一致时请在插件管理里重装一次（模块随包更新）。');
           }
           throw err;
         }
@@ -535,6 +535,34 @@
    * challenge, and hand back the cookies for the declared domain — with the
    * same User-Agent the engine will use afterwards (cf_clearance is bound to
    * UA + client IP, so the two must match). */
+  /* One line the user can paste back: root status, search status and how many
+   * cards parsed, and which hosts the jar holds. */
+  async function probeJm() {
+    var status = $('jmStatus');
+    var domain = App.settings.jmDomain || '18comic.vip';
+    var base = 'https://' + domain;
+    var spec = E.getSource('jm');
+    var lines = [];
+    status.textContent = '测试中…';
+    try {
+      var home = await ctx.get(base + '/', { headers: E.baseHeaders(base + '/') });
+      lines.push('首页 ' + home.status + '/' + home.body.length + 'B' + (spec.challengeCheck(home.body) ? '·质询' : '·正常'));
+      var q = $('q').value.trim() || 'test';
+      var search = await ctx.get(base + '/search/photos?' + [
+        'search_query=' + encodeURIComponent(q), 'page=1', 'main_tag=0', 'o=mr', 't=a'
+      ].join('&'), { headers: E.baseHeaders(base + '/') });
+      var cards = spec.parseCards(spec.unwrap(search.body), base);
+      lines.push('检索 "' + q + '" ' + search.status + '/' + search.body.length + 'B/' + cards.length + '条' +
+        (spec.challengeCheck(search.body) ? '·质询' : ''));
+      var jar = await Host.invoke('cookie.list', {});
+      var hosts = Object.keys((jar && jar.hosts) || {});
+      lines.push('Cookie ' + (hosts.length ? hosts.join(',') : '空'));
+    } catch (err) {
+      lines.push('错误 ' + String(err && err.message ? err.message : err).slice(0, 70));
+    }
+    status.textContent = lines.join(' · ');
+  }
+
   async function passChallenge() {
     var status = $('jmStatus');
     var domain = App.settings.jmDomain || '18comic.vip';
@@ -803,6 +831,7 @@
       if (App.settings.root) Host.invoke('system.openFolder', { path: App.settings.root }).catch(function () {});
     });
     $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
+    if ($('jmProbe')) $('jmProbe').addEventListener('click', probeJm);
     $('pickerUp').addEventListener('click', function () { Picker.up(); });
     $('pickerNew').addEventListener('click', function () { Picker.create(); });
     $('pickerCancel').addEventListener('click', function () { $('picker').hidden = true; });

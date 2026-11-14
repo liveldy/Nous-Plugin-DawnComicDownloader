@@ -26,7 +26,6 @@ public final class Engine {
     private final FileService files;
     private final CookieJar cookies;
     private final HttpService http;
-    private final DesktopService desktop = new DesktopService();
     private final long startedAtMs;
 
     private Engine(FileService files, CookieJar cookies, HttpService http) {
@@ -204,8 +203,7 @@ public final class Engine {
                 return http.probe(params);
             case "image.proxy":
                 return http.imageProxy(params);
-            case "system.chooseFolder":
-                return desktop.chooseFolder(Json.str(params, "title", ""), Json.str(params, "path", ""));
+
             case "system.openFolder":
                 return files.openFolder(Json.str(params, "path", ""));
             default:

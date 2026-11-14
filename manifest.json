@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -58,13 +58,23 @@
       "entry": "app.dawncomic.PluginMain",
       "mainJar": "app/plugin.jar",
       "asset": {
-        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.4/DawnComicDownloader-windows-x64.module.zip",
-        "sha256": "7176339ee230ee1522a12d3a67b995fc79253c9205e850d3fa6487e40f62f231",
-        "bytes": 26866373
+        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.5/DawnComicDownloader-windows-x64.module.zip",
+        "sha256": "7a4dc79c2ce118c99512d2cec7b888f80e1310df251b969d265688692a264f9c",
+        "bytes": 16656063
       }
     }
   },
   "changelog": [
+    {
+      "version": "1.0.5",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "禁漫检索不再“静默 0 条”：403/429/451/503 或质询页直接报 E_CHALLENGE（含状态码、字节数、Cookie 过期/UA/出口 IP 三种常见原因）；200 但结构不符报 E_PARSE；空响应报 E_EMPTY。",
+        "设置页新增“测试禁漫”：一次给出首页状态、检索状态与解析条数、cookie 罐里已登记的域，便于定位是拦截、过期还是解析变化。",
+        "下载目录选择保持插件内目录浏览（原生目录对话框需 java.desktop，模块会从 16.6 MiB 涨到 26.9 MiB，本环境无法稳定上传该体积的发行资产，故不采用）。",
+        "模块重建（不含 java.desktop），页面与模块版本不一致时的错误信息改为指认具体方法。"
+      ]
+    },
     {
       "version": "1.0.4",
       "publishedAt": "2026-11-14",

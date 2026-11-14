@@ -492,7 +492,23 @@
     baseOf: function (ctx) { return 'https://' + jm.domain(ctx); },
 
     challengeCheck: function (html) {
-      return /Just a moment|cf_chl|challenge-platform|Enable JavaScript and cookies/i.test(html || '');
+      return /Just a moment|cf_chl|challenge-platform|Enable JavaScript and cookies|Attention Required/i.test(html || '');
+    },
+
+    /* A blocked or empty response must never look like "no results": the source
+     * row would show 0 and the user cannot tell a challenge from a miss. */
+    assertUsable: function (res, html, where) {
+      var status = res.status || 0;
+      var size = (html || '').length;
+      if (jm.challengeCheck(html) || status === 403 || status === 429 || status === 451 || status === 503) {
+        throw new Error('E_CHALLENGE: ' + where + ' 被站点拦截（HTTP ' + status + '，' + size + 'B）：Cookie 过期、UA 不一致或出口 IP 变了');
+      }
+      if (status >= 400) throw new Error('E_HTTP: ' + where + ' HTTP ' + status + '（' + size + 'B）');
+      if (!size) throw new Error('E_EMPTY: ' + where + ' 空响应（HTTP ' + status + '）');
+    },
+
+    looksLikeListing: function (html) {
+      return /album\/\d+|list-col|search_query|thumb-overlay|data-album=/i.test(html || '');
     },
 
     /* Newer 18comic pages ship the real markup inside base64Utf8(...). */
@@ -543,9 +559,12 @@
       var url = base + '/search/photos?' + qs({ search_query: q, page: p, main_tag: 0, o: 'mr', t: 'a' });
       return ctx.get(url, { headers: baseHeaders(base + '/') }).then(function (res) {
         var html = jm.unwrap(res.body);
-        if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+        jm.assertUsable(res, html, '检索');
         var items = jm.parseCards(html, base);
-        return { items: items, hasMore: items.length > 0 };
+        if (!items.length && !jm.looksLikeListing(html)) {
+          throw new Error('E_PARSE: 检索页结构不符（HTTP ' + res.status + '，' + html.length + 'B，无 album 链接）');
+        }
+        return { items: items, hasMore: items.length > 0, note: items.length ? '' : '0 条' };
       });
     },
 
@@ -554,8 +573,12 @@
       var p = Math.max(1, page || 1);
       return ctx.get(base + '/albums?page=' + p, { headers: baseHeaders(base + '/') }).then(function (res) {
         var html = jm.unwrap(res.body);
-        if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
-        return { items: jm.parseCards(html, base), hasMore: true };
+        jm.assertUsable(res, html, '浏览');
+        var items = jm.parseCards(html, base);
+        if (!items.length && !jm.looksLikeListing(html)) {
+          throw new Error('E_PARSE: 浏览页结构不符（HTTP ' + res.status + '，' + html.length + 'B）');
+        }
+        return { items: items, hasMore: true };
       });
     },
 
@@ -605,7 +628,7 @@
       var aid = String(item.id || '');
       return ctx.get(item.url || (base + '/album/' + aid + '/'), { headers: baseHeaders(base + '/') }).then(function (res) {
         var html = jm.unwrap(res.body);
-        if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+        jm.assertUsable(res, html, '本子详情');
         var meta = jm.albumMeta(html);
         var chapters = meta.chapters.length ? meta.chapters : [aid];
         var queue = chapters.slice(0, 20);
@@ -616,7 +639,7 @@
             return ctx.get(base + '/photo/' + pid + '/', { headers: baseHeaders(base + '/album/' + aid + '/') })
               .then(function (r) {
                 var body = jm.unwrap(r.body);
-                if (jm.challengeCheck(body)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
+                jm.assertUsable(r, body, '章节');
                 var scramble = (/var scramble_id = (\d+);/.exec(body) || [])[1] || meta.scrambleId;
                 jm.pageUrls(body, base).forEach(function (url) {
                   var file = url.split('/').pop().split('?')[0];
