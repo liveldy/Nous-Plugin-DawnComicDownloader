@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -37,7 +37,8 @@
     "runtime.start",
     "runtime.invoke",
     "storage.get",
-    "storage.set"
+    "storage.set",
+    "runtime.webLogin"
   ],
   "optionalMethods": [
     "storage.remove"
@@ -57,13 +58,21 @@
       "entry": "app.dawncomic.PluginMain",
       "mainJar": "app/plugin.jar",
       "asset": {
-        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.2/DawnComicDownloader-windows-x64.module.zip",
+        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.3/DawnComicDownloader-windows-x64.module.zip",
         "sha256": "d04403c8edb767353585977511d28cff5a01c3a640c75b47b7f2b4889e50b3ac",
         "bytes": 16656059
       }
     }
   },
   "changelog": [
+    {
+      "version": "1.0.3",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "设置页新增“过 Cloudflare 校验”：调用宿主的 runtime.webLogin 开隔离窗口完成 18comic 人机校验，自动取回 cf_clearance 等 Cookie 并写入设置与 cookie 罐；窗口 UA 与引擎请求 UA 一致，避免 cf_clearance 因 UA 不匹配失效。",
+        "manifest 的 requiredMethods 增加 runtime.webLogin；README 补充手动与自动两种取 Cookie 的方式及过期处理。"
+      ]
+    },
     {
       "version": "1.0.2",
       "publishedAt": "2026-11-14",

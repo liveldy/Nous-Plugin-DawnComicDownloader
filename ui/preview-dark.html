@@ -83,6 +83,10 @@
     <label>SauceNAO API Key <input name="sauce" type="text" placeholder="可选" spellcheck="false"></label>
     <label>禁漫域名 <input name="jmDomain" type="text" placeholder="18comic.vip" spellcheck="false"></label>
     <label>禁漫 Cookie <input name="jmCookie" type="text" placeholder="cf_clearance=..." spellcheck="false"></label>
+    <div class="inline">
+      <button class="ghost-btn" type="button" id="jmLogin">过 Cloudflare 校验</button>
+      <span class="jmstatus" id="jmStatus" aria-live="polite"></span>
+    </div>
     <label class="check"><input name="jmDescramble" type="checkbox" checked> 还原乱序页图</label>
     <button class="save" type="submit">保存设置</button>
     <span class="saved" id="saved" aria-live="polite"></span>

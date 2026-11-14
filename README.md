@@ -60,7 +60,12 @@ D:\Manga\
 - 识别质询页并返回 `E_CHALLENGE`，不把空结果当成“没有命中”；
 - 把设置里的 Cookie 写进原生模块的 cookie 罐（按域保存），后续请求带上。
 
-做法：浏览器登录 18comic.vip 并通过人机校验 → 复制该域的 `cf_clearance`（连同 `__cf_bm` 等）填进设置。该站的解析按社区客户端的结构实现，**未在本机通过质询验证**，页面结构变化时会在结果里报 `E_PARSE`。
+两条路：
+
+1. **设置页按钮**（推荐）：`设置 → 过 Cloudflare 校验`。宿主会开一个隔离窗口打开 18comic 域名，你完成站点的人机校验后，窗口自动关闭，`cf_clearance` 等 Cookie 直接写进设置与原生模块的 cookie 罐。窗口使用的 User-Agent 与之后引擎请求用的完全一致（`cf_clearance` 同时绑定 UA 和出口 IP，两边不一致会被判为无效）。
+2. **手动复制**：浏览器打开站点并过校验 → DevTools → Application → Cookies → `https://18comic.vip` → 复制 `cf_clearance` 的值（连同 `__cf_bm` 更好）→ 粘进 `设置 → 禁漫 Cookie`，形如 `cf_clearance=xxx; __cf_bm=yyy`。手动的代价是要自己保证浏览器 UA 与插件默认 UA（桌面 Chrome 131）一致、且与插件走同一出口 IP。
+
+Cookie 会过期（Cloudflare 通常几十分钟），过期后检索会重新报 `E_CHALLENGE`，再过一次校验即可。该站的解析按社区客户端的结构实现，**未在本机通过质询验证**，页面结构变化时会在结果里报 `E_PARSE`。
 
 ## 开发
 

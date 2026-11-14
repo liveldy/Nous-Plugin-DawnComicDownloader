@@ -523,6 +523,37 @@
     });
   }
 
+  /* The host can open an isolated window, let the user pass the Cloudflare
+   * challenge, and hand back the cookies for the declared domain — with the
+   * same User-Agent the engine will use afterwards (cf_clearance is bound to
+   * UA + client IP, so the two must match). */
+  async function passChallenge() {
+    var status = $('jmStatus');
+    var domain = App.settings.jmDomain || '18comic.vip';
+    if (!window.NousPlugin) { status.textContent = '只有正式宿主能开校验窗口'; return; }
+    status.textContent = '已打开窗口，完成站点校验后会自动保存';
+    try {
+      var res = await window.NousPlugin.request('runtime.webLogin', {
+        url: 'https://' + domain + '/',
+        domains: [domain],
+        cookieUrls: ['https://' + domain + '/'],
+        requiredCookies: [['cf_clearance']],
+        userAgents: { 'windows-x64': E.UA },
+        urls: { 'windows-x64': 'https://' + domain + '/' }
+      }, { timeoutMs: 600000 });
+      var cookie = String((res && res.cookie) || '');
+      if (!cookie) throw new Error('E_AUTH: 没有取到 Cookie');
+      App.settings.jmCookie = cookie;
+      $('fields').jmCookie.value = cookie;
+      await saveSettings();
+      await Host.invoke('cookie.set', { host: domain, cookie: cookie }).catch(function () {});
+      await Host.invoke('cookie.set', { host: '.' + domain, cookie: cookie }).catch(function () {});
+      status.textContent = '已保存 ' + cookie.split(';').length + ' 项';
+    } catch (err) {
+      status.textContent = String(err && err.message ? err.message : err).slice(0, 80);
+    }
+  }
+
   async function runQueue() {
     $('start').disabled = true;
     var rows = App.queue.filter(function (r) { return r.state === 'queued' || r.state === 'failed'; });
@@ -672,6 +703,10 @@
     $('openroot').addEventListener('click', function () {
       if (App.settings.root) Host.invoke('system.openFolder', { path: App.settings.root }).catch(function () {});
     });
+    if ($('jmLogin')) {
+      if (window.NousPlugin) $('jmLogin').addEventListener('click', passChallenge);
+      else $('jmLogin').hidden = true;
+    }
     $('fields').addEventListener('submit', async function (e) {
       e.preventDefault();
       var form = e.target;
