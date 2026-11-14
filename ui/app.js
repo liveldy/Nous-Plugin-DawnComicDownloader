@@ -297,7 +297,7 @@
     card.querySelector('.tags').textContent = item.tags.join(' · ');
     if (item.duration) card.querySelector('.badge').textContent = item.duration;
     card.addEventListener('click', function () { togglePick(item, card); });
-    requestCover(item.cover, card.querySelector('img'));
+    requestCover(item.cover, card.querySelector('img'), item.url);
     return card;
   }
 
@@ -318,15 +318,33 @@
     if (!base) document.documentElement.dataset.hasResults = 'true';
   }
 
-  function requestCover(url, img) {
+  function requestCover(url, img, referer) {
     if (!url) return;
     if (App.coverCache.has(url)) {
       img.src = App.coverCache.get(url);
       img.classList.add('is-in');
       return;
     }
-    COVER_QUEUE.push({ url: url, img: img });
+    COVER_QUEUE.push({ url: url, img: img, referer: referer || '' });
     pumpCovers();
+  }
+
+  /* Some CDNs answer image requests only with a Referer, and some answer with
+   * application/octet-stream; the browser will not render the latter, so the
+   * magic bytes decide the data URL's type. */
+  function fixDataUrlType(dataUrl) {
+    var m = /^data:([^;,]*)(;base64,)([\s\S]*)$/.exec(dataUrl || '');
+    if (!m) return dataUrl;
+    var declared = (m[1] || '').toLowerCase();
+    if (declared && declared.indexOf('image/') === 0) return dataUrl;
+    var head = E.base64ToBytes(m[3].slice(0, 24));
+    var type = '';
+    if (head[0] === 0xff && head[1] === 0xd8) type = 'image/jpeg';
+    else if (head[0] === 0x89 && head[1] === 0x50) type = 'image/png';
+    else if (head[0] === 0x47 && head[1] === 0x49) type = 'image/gif';
+    else if (head[0] === 0x52 && head[1] === 0x49 && head[8] === 0x57) type = 'image/webp';
+    else if (head[4] === 0x66 && head[5] === 0x74 && head[6] === 0x79 && head[7] === 0x70) type = 'image/avif';
+    return type ? 'data:' + type + m[2] + m[3] : dataUrl;
   }
 
   function pumpCovers() {
@@ -335,10 +353,17 @@
       App.coversInFlight++;
       (async function (j) {
         try {
-          var r = await Host.invoke('image.proxy', { url: j.url, maxBytes: 1400000 });
+          var r = null;
+          try {
+            r = await Host.invoke('image.proxy', { url: j.url, maxBytes: 1400000, referer: j.referer });
+          } catch (err) {
+            if (!j.referer) throw err;
+            r = await Host.invoke('image.proxy', { url: j.url, maxBytes: 1400000 });
+          }
           if (!r || !r.dataUrl) return;
-          App.coverCache.set(j.url, r.dataUrl);
-          j.img.src = r.dataUrl;
+          var src = fixDataUrlType(r.dataUrl);
+          App.coverCache.set(j.url, src);
+          j.img.src = src;
           j.img.classList.add('is-in');
         } catch (e) {
           j.img.removeAttribute('src');
@@ -600,279 +625,48 @@
     parts.forEach(function (part) { merged.set(part, at); at += part.length; });
     return { bytes: merged, mime: '' };
   }
-  /* The host rejects a single request over 1 MiB, and it counts the JSON as
-   * UTF-16, so an ASCII base64 of 512 KiB already weighs 1 MiB. 128 KiB of
-   * bytes (≈171 KiB of base64 ≈342 KiB UTF-16) stays well clear of the line
-   * even with the envelope. First chunk truncates, the rest append. */
+  /* The host refuses a payload it considers too large, but the exact threshold
+   * has not matched the documented 1 MiB for every call. So the writer starts at
+   * 128 KiB and halves itself whenever a chunk is refused, down to 8 KiB; the
+   * error names the smallest size that still failed. */
   async function writeBytes(path, bytes) {
     var chunk = 128 * 1024;
     var offset = 0;
     var first = true;
     try {
       while (offset < bytes.length) {
-        var slice = bytes.subarray(offset, Math.min(offset + chunk, bytes.length));
-        var b64 = E.bytesToBase64(slice);
+        var size = Math.min(chunk, bytes.length - offset);
+        var b64 = E.bytesToBase64(bytes.subarray(offset, offset + size));
+        var wrote = false;
         var attempt = 0;
         for (;;) {
           try {
             await Host.invoke('file.writeBase64', { path: path, base64: b64, append: !first });
+            wrote = true;
             break;
           } catch (err) {
+            var msg = String(err && err.message ? err.message : err);
+            if (/过大|too large|TOO_LARGE/i.test(msg) && size > 8 * 1024) {
+              chunk = Math.max(8 * 1024, Math.floor(size / 2));
+              break;
+            }
             if (++attempt >= 3) throw err;
             await new Promise(function (r) { setTimeout(r, 220 * attempt); });
           }
         }
+        if (!wrote) continue;
         first = false;
-        offset += chunk;
+        offset += size;
       }
     } catch (err) {
       await Host.invoke('fs.delete', { path: path }).catch(function () {});
-      throw err;
+      var note = String(err && err.message ? err.message : err);
+      if (/过大|too large|TOO_LARGE/i.test(note)) {
+        note += '（分片已降到 ' + Math.round(chunk / 1024) + ' KiB 仍被拒）';
+      }
+      throw new Error(note);
     }
   }
-
-  function makeCanvas(w, h) {
-    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
-    var c = document.createElement('canvas');
-    c.width = w;
-    c.height = h;
-    return c;
-  }
-
-  function canvasToBlob(canvas) {
-    if (canvas.convertToBlob) return canvas.convertToBlob({ type: 'image/png' });
-    return new Promise(function (resolve) { canvas.toBlob(resolve, 'image/png'); });
-  }
-
-
-  /* The host can open an isolated window, let the user pass the Cloudflare
-   * challenge, and hand back the cookies for the declared domain — with the
-   * same User-Agent the engine will use afterwards (cf_clearance is bound to
-   * UA + client IP, so the two must match). */
-  /* allowRoot → mkdirs → download → list, with the error text kept verbatim so a
-   * failing install can be diagnosed without guessing which hop broke. */
-  async function testDownload() {
-    var status = $('jmStatus');
-    var root = ($('fields').root.value || App.settings.root || '').trim();
-    var steps = [];
-    if (!root) { status.textContent = '先填下载目录'; return; }
-    status.textContent = '测试中…';
-    try {
-      await Host.invoke('fs.allowRoot', { path: root });
-      steps.push('allowRoot ok');
-      var dir = root.replace(/[\\/]+$/, '') + '\\_selftest';
-      await Host.invoke('fs.mkdirs', { path: dir });
-      steps.push('mkdirs ok');
-      var got = await Host.invoke('http.download', {
-        url: 'https://hentaileague.com/wp-json/',
-        path: dir + '\\probe.json',
-        headers: { 'User-Agent': E.currentUserAgent() },
-        skipExisting: false,
-        timeoutMs: 60000
-      });
-      steps.push('download ' + got.bytes + 'B ' + (got.contentType || ''));
-      await Host.invoke('fs.delete', { path: dir });
-      steps.push('清理 ok');
-    } catch (err) {
-      steps.push('失败：' + String(err && err.message ? err.message : err).slice(0, 120));
-    }
-    status.textContent = steps.join(' · ');
-  }
-
-  /* One line the user can paste back: root status, search status and how many
-   * cards parsed, and which hosts the jar holds. */
-  async function probeJm() {
-    var status = $('jmStatus');
-    var domain = App.settings.jmDomain || '18comic.vip';
-    var base = 'https://' + domain;
-    var spec = E.getSource('jm');
-    var lines = [];
-    status.textContent = '测试中…';
-    try {
-      var home = await ctx.get(base + '/', { headers: E.baseHeaders(base + '/') });
-      lines.push('首页 ' + home.status + '/' + home.body.length + 'B' + (spec.challengeCheck(home.body) ? '·质询' : '·正常'));
-      var q = $('q').value.trim() || 'test';
-      var search = await ctx.get(base + '/search/photos?' + [
-        'search_query=' + encodeURIComponent(q), 'page=1', 'main_tag=0', 'o=mr', 't=a'
-      ].join('&'), { headers: E.baseHeaders(base + '/') });
-      var cards = spec.parseCards(spec.unwrap(search.body), base);
-      lines.push('检索 "' + q + '" ' + search.status + '/' + search.body.length + 'B/' + cards.length + '条' +
-        (spec.challengeCheck(search.body) ? '·质询' : ''));
-      if (cards.length) {
-        var first = cards[0];
-        var album = await ctx.get(first.url, { headers: E.baseHeaders(base + '/', true) });
-        var body = spec.unwrap(album.body);
-        var meta = E.parsers.jmAlbumMeta(body);
-        lines.push('本子 ' + first.id + ' ' + album.status + '/' + body.length + 'B · 章节 ' + meta.chapters.length +
-          ' · 页数 ' + (meta.count || 0) + ' · scramble ' + (meta.scrambleId || '—'));
-        if (!meta.chapters.length) {
-          var probe = /data-album|episode_|\/photo\/|series/i.test(body) ? '页面含章节标记但未匹配' : '页面不含章节标记';
-          lines.push(probe);
-        }
-      }
-      var jar = await Host.invoke('cookie.list', {});
-      var hosts = (jar && jar.hosts) || {};
-      var named = Object.keys(hosts).map(function (h) {
-        var names = String(hosts[h] || '').split(';').map(function (p) { return p.split('=')[0].trim(); }).filter(Boolean);
-        return h + ':' + (names.join('/') || '空');
-      });
-      lines.push('Cookie ' + (named.length ? named.join(' , ') : '空'));
-      lines.push('UA ' + E.currentUserAgent().slice(0, 48));
-    } catch (err) {
-      lines.push('错误 ' + String(err && err.message ? err.message : err).slice(0, 70));
-    }
-    status.textContent = lines.join(' · ');
-  }
-
-  async function passChallenge() {
-    var status = $('jmStatus');
-    var domain = App.settings.jmDomain || '18comic.vip';
-    if (!window.NousPlugin) { status.textContent = '只有正式宿主能开校验窗口'; return; }
-    status.textContent = '已打开窗口，完成站点校验后会自动保存';
-    try {
-      var res = await window.NousPlugin.request('runtime.webLogin', {
-        url: 'https://' + domain + '/',
-        domains: [domain],
-        cookieUrls: ['https://' + domain + '/'],
-        requiredCookies: [['cf_clearance']],
-        userAgents: { 'windows-x64': E.UA },
-        urls: { 'windows-x64': 'https://' + domain + '/' }
-      }, { timeoutMs: 600000 });
-      var cookie = String((res && res.cookie) || '');
-      if (!cookie) throw new Error('E_AUTH: 没有取到 Cookie');
-      App.settings.jmCookie = cookie;
-      $('fields').jmCookie.value = cookie;
-      await saveSettings();
-      await Host.invoke('cookie.set', { host: domain, cookie: cookie }).catch(function () {});
-      await Host.invoke('cookie.set', { host: '.' + domain, cookie: cookie }).catch(function () {});
-      var check = await ctx.get('https://' + domain + '/', { headers: E.baseHeaders('https://' + domain + '/') });
-      var ok = !E.getSource('jm').challengeCheck(check.body) && check.status < 400;
-      status.textContent = '已保存 ' + cookie.split(';').length + ' 项 · 复检 ' + check.status + '/' + check.body.length + 'B' + (ok ? '·通过' : '·仍被拦');
-    } catch (err) {
-      status.textContent = String(err && err.message ? err.message : err).slice(0, 80);
-    }
-  }
-
-  /* ---------------------------------------------------------- folder picker */
-
-  /* First choice is the winget-native dialog inside the module (system.chooseFolder).
-   * When the module predates it, or the session has no desktop, the page falls back
-   * to its own browser built on fs.list — same result, one request per folder. */
-  var Picker = {
-    path: '',
-    async open(start) {
-      var from = start || App.settings.root || 'C:\\';
-      try {
-        var res = await Host.invoke('system.chooseFolder', { title: '选择下载目录', path: from });
-        if (res && res.path) { commitRoot(res.path); return; }
-        if (res && res.path === null) return; // user cancelled the native dialog
-      } catch (err) {
-        var msg = String(err && err.message ? err.message : err);
-        if (!/E_UNSUPPORTED|E_MODULE|E_IO/.test(msg)) throw err;
-      }
-      Picker.path = from;
-      $('pickerPath').value = from;
-      $('picker').hidden = false;
-      await Picker.roots();
-      await Picker.list();
-    },
-    /* Drive letters are found by asking fs.list for each root: no extra module
-     * method, so switching drives works on a module that predates it. */
-    async roots() {
-      var bar = $('pickerRoots');
-      bar.textContent = '';
-      if (!Picker.drives) {
-        var letters = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
-        var hits = await Promise.all(letters.map(function (L) {
-          var root = L + ':\\';
-          return Host.invoke('fs.list', { path: root }).then(function () { return root; }, function () { return null; });
-        }));
-        Picker.drives = hits.filter(Boolean);
-      }
-      Picker.drives.forEach(function (root) {
-        var b = document.createElement('button');
-        b.type = 'button';
-        b.textContent = root.slice(0, 2);
-        b.setAttribute('aria-pressed', String(Picker.path.toUpperCase().indexOf(root.toUpperCase()) === 0));
-        b.addEventListener('click', function () {
-          Picker.path = root;
-          $('pickerPath').value = root;
-          Picker.roots();
-          Picker.list();
-        });
-        bar.appendChild(b);
-      });
-    },
-    async list() {
-      var list = $('pickerList');
-      list.textContent = '';
-      try {
-        var res = await Host.invoke('fs.list', { path: Picker.path });
-        var dirs = (res.entries || []).filter(function (e) { return e.dir; })
-          .sort(function (a, b) { return a.name.localeCompare(b.name); });
-        if (!dirs.length) {
-          var empty = document.createElement('li');
-          empty.className = 'empty';
-          empty.textContent = '这里没有子目录';
-          list.appendChild(empty);
-        }
-        dirs.forEach(function (e) {
-          var li = document.createElement('li');
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.textContent = e.name;
-          b.addEventListener('click', function () {
-            Picker.path = e.path;
-            $('pickerPath').value = e.path;
-            Picker.list();
-          });
-          li.appendChild(b);
-          list.appendChild(li);
-        });
-      } catch (err) {
-        var li = document.createElement('li');
-        li.className = 'empty';
-        li.textContent = String(err && err.message ? err.message : err).slice(0, 90);
-        list.appendChild(li);
-      }
-      Picker.roots();
-    },
-    up() {
-      var p = Picker.path.replace(/[\\/]+$/, '');
-      var i = p.lastIndexOf('\\');
-      if (i <= 0) return;
-      var next = p.slice(0, i);
-      Picker.path = /^[A-Za-z]:$/.test(next) ? next + '\\' : next;
-      $('pickerPath').value = Picker.path;
-      Picker.list();
-    },
-    async create() {
-      var base = Picker.path.replace(/[\\/]+$/, '');
-      var n = 0, name;
-      for (;;) {
-        name = n ? '新建文件夹 ' + n : '新建文件夹';
-        try {
-          await Host.invoke('fs.mkdirs', { path: base + '\\' + name });
-          break;
-        } catch (err) {
-          if (++n > 40) return;
-        }
-      }
-      Picker.path = base + '\\' + name;
-      $('pickerPath').value = Picker.path;
-      Picker.list();
-    }
-  };
-
-  function commitRoot(path) {
-    App.settings.root = path;
-    var form = $('fields');
-    if (form) form.root.value = path;
-    Host.invoke('fs.allowRoot', { path: path }).catch(function () {});
-    saveSettings();
-    renderQueue();
-  }
-
   async function runQueue() {
     $('start').disabled = true;
     var rows = App.queue.filter(function (r) { return r.state === 'queued' || r.state === 'failed'; });
