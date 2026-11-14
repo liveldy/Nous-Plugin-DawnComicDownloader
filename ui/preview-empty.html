@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-type="software" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="page-type" content="software">
+<meta name="site-kind" content="software">
+<title>破晓漫画下载器 · preview empty</title>
+<meta name="description" content="六个站点的漫画与视频检索、图片反查与下载队列。">
+<meta name="theme-color" content="#F3EFE7">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<a class="skip" href="#results">跳到结果</a>
+
+<header class="bar">
+  <div class="wrap bar-in">
+    <span class="brand" aria-label="DawnComicDownloader">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 14c3.2 0 3.2-4 6.4-4s3.2 4 6.4 4 3.2-4 6.4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M2 19c3.2 0 3.2-4 6.4-4s3.2 4 6.4 4 3.2-4 6.4-4" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" opacity=".45"/></svg>
+      <b>dawn</b>
+    </span>
+
+    <form class="find" id="find" autocomplete="off">
+      <label class="sr" for="q">关键词</label>
+      <input id="q" name="q" type="search" placeholder="画师、作品名、tag" spellcheck="false">
+      <button class="go" type="submit" aria-label="检索">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16 16 4.5 4.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </form>
+
+    <div class="modes" role="group" aria-label="检索方式">
+      <button type="button" class="mode is-on" data-mode="text">文字</button>
+      <button type="button" class="mode" data-mode="image">图片</button>
+    </div>
+
+    <div class="tally" id="tally" aria-live="polite"></div>
+  </div>
+</header>
+
+<main class="wrap shell">
+  <section class="results" id="results" tabindex="-1">
+    <div class="grid" id="grid"></div>
+    <button class="more" id="more" type="button" hidden>继续取下一页</button>
+    <p class="blank" id="blank" hidden></p>
+  </section>
+
+  <aside class="queue" id="queue" aria-label="下载管理">
+    <div class="qhead">
+      <span class="qcount"><b id="qcount">0</b> 项</span>
+      <button class="start" id="start" type="button" disabled>开始下载</button>
+    </div>
+    <div class="qbar" aria-hidden="true"><i id="qbar"></i></div>
+    <ol class="qlist" id="qlist"></ol>
+    <p class="qempty" id="qempty">选中结果后会排在这里，按编号写入下载目录。</p>
+    <div class="qfoot">
+      <span id="rootline"></span>
+      <button class="ghost" id="openroot" type="button" hidden>打开目录</button>
+    </div>
+  </aside>
+</main>
+
+<section class="wrap sites-wrap" aria-label="支持的网站">
+  <div class="sites" id="sites"></div>
+</section>
+
+<section class="wrap panel" id="panel" hidden>
+  <h2>图片检索</h2>
+  <form class="drop" id="drop">
+    <input id="file" type="file" accept="image/*" hidden>
+    <button class="pickfile" type="button" id="pickfile">选择图片</button>
+    <span class="hint" id="hint">SauceNAO 有 key 时优先，无 key 走 IQDB</span>
+  </form>
+  <div class="matches" id="matches"></div>
+</section>
+
+<section class="wrap panel" id="settings" hidden>
+  <h2>设置</h2>
+  <form class="fields" id="fields">
+    <label>下载目录 <input name="root" type="text" placeholder="D:\Manga" spellcheck="false"></label>
+    <label>SauceNAO API Key <input name="sauce" type="text" placeholder="可选" spellcheck="false"></label>
+    <label>编号位数 <input name="width" type="number" min="2" max="5" step="1" value="3"></label>
+    <label>起始编号 <input name="start" type="number" min="1" max="99999" step="1" value="1"></label>
+    <label>18comic Cookie <input name="jmCookie" type="text" placeholder="cf_clearance=..." spellcheck="false"></label>
+    <button class="save" type="submit">保存设置</button>
+    <span class="saved" id="saved" aria-live="polite"></span>
+  </form>
+</section>
+
+<script src="demo-host.js"></script>
+<script src="nous-plugin.js"></script>
+<script src="engine.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

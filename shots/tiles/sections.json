@@ -1,0 +1,70 @@
+{
+ "url": "http://127.0.0.1:5300/ui/preview-empty.html",
+ "views": {
+  "desktop": {
+   "width": 1440,
+   "height": 900,
+   "navH": 63,
+   "scrollHeight": 900,
+   "screens": 1,
+   "sections": [
+    {
+     "n": 1,
+     "tag": "section",
+     "id": "results",
+     "cls": "results",
+     "top": 87,
+     "h": 225,
+     "hScreens": 0.25,
+     "offGrid": 225,
+     "tiles": [
+      {
+       "file": "desktop-sec-01-a.jpg",
+       "scrollY": 0,
+       "cutTop": 87,
+       "height": 225
+      }
+     ]
+    },
+    {
+     "n": 2,
+     "tag": "aside",
+     "id": "queue",
+     "cls": "queue",
+     "top": 87,
+     "h": 166,
+     "hScreens": 0.18,
+     "offGrid": 166,
+     "tiles": [
+      {
+       "file": "desktop-sec-02-a.jpg",
+       "scrollY": 0,
+       "cutTop": 87,
+       "height": 166
+      }
+     ]
+    },
+    {
+     "n": 3,
+     "tag": "section",
+     "id": "",
+     "cls": "wrap sites-wrap",
+     "top": 778,
+     "h": 123,
+     "hScreens": 0.14,
+     "offGrid": 123,
+     "tiles": [
+      {
+       "file": "desktop-sec-03-a.jpg",
+       "scrollY": 0,
+       "cutTop": 778,
+       "height": 122
+      }
+     ]
+    }
+   ],
+   "consoleErrors": []
+  }
+ },
+ "at": "2026-11-14T12:04:51.624Z"
+}

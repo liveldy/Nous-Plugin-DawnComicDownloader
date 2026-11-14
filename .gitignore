@@ -1,0 +1,8 @@
+build/
+dist/
+.taste-skill/
+shots/*.png
+shots/check/
+shots/dom.html
+node_modules/
+*.log
