@@ -54,7 +54,7 @@ test('the canvas helpers the descramble path needs are defined once', () => {
 });
 
 test('settings, picker and download controls are all present', () => {
-  for (const id of ['fields', 'rootInput', 'browseRoot', 'jmDomainInput', 'jmCookieInput', 'uaInput', 'jmProbe', 'dlTest', 'jmLogin', 'picker', 'pickerPath', 'pickerRoots']) {
+  for (const id of ['fields', 'rootInput', 'browseRoot', 'jmDomainInput', 'jmCookieInput', 'uaInput', 'jmProbe', 'dlTest', 'jmLogin', 'pixivCookieInput', 'pixivLogin', 'pixivStatus', 'picker', 'pickerPath', 'pickerRoots']) {
     assert.ok(html.includes('id="' + id + '"'), 'missing control: ' + id);
   }
 });

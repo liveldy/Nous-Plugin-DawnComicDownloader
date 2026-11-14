@@ -826,7 +826,7 @@
       var q = collapse(query);
       if (!q) return pixiv.browse(ctx, p);
       var url = pixiv.base + '/ajax/search/artworks/' + encodeURIComponent(q) + '?' + qs({
-        word: q, p: p, lang: 'zh', s_mode: 's_tag', order: 'date_d'
+        word: q, p: p, lang: 'zh', s_mode: 's_tag', order: 'date_d', mode: 'all'
       });
       return ctx.get(url, { headers: pixiv.headers() }).then(function (res) {
         var json;

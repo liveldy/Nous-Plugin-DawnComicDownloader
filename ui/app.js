@@ -99,7 +99,7 @@
     results: {},
     queue: [],
     scanning: false,
-    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '', perSource: 20 },
+    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '', perSource: 20, pixivCookie: '' },
     disabled: {},
     filter: null,
     kind: null,
@@ -826,6 +826,55 @@
     status.textContent = lines.join(' · ');
   }
 
+
+  /* Pixiv's R-18 works are not a URL problem: the site hides them from anyone
+   * whose session has not enabled "R-18" in the account's viewing settings. The
+   * host window lets the user log in and turn that on, then hands back the
+   * session cookie; the same window uses the User-Agent the engine sends. */
+  async function passPixivLogin() {
+    var status = $('pixivStatus');
+    if (!window.NousPlugin) { status.textContent = '只有正式宿主能开登录窗口'; return; }
+    status.textContent = '已打开窗口，登录并在设置里开启 R-18 后会自动保存';
+    try {
+      var res = await window.NousPlugin.request('runtime.webLogin', {
+        url: 'https://www.pixiv.net/',
+        domains: ['pixiv.net', 'www.pixiv.net'],
+        cookieUrls: ['https://www.pixiv.net/', 'https://www.pixiv.net/setting_user.php'],
+        requiredCookies: [['PHPSESSID']],
+        userAgents: { 'windows-x64': E.currentUserAgent() },
+        urls: { 'windows-x64': 'https://www.pixiv.net/' }
+      }, { timeoutMs: 600000 });
+      var cookie = String((res && res.cookie) || '');
+      if (!cookie) throw new Error('E_AUTH: 没有取到 Cookie');
+      App.settings.pixivCookie = cookie;
+      $('fields').pixivCookie.value = cookie;
+      await saveSettings();
+      var hosts = ['pixiv.net', '.pixiv.net', 'www.pixiv.net'];
+      for (var i = 0; i < hosts.length; i++) {
+        await Host.invoke('cookie.set', { host: hosts[i], cookie: cookie }).catch(function () {});
+      }
+      status.textContent = '已保存 ' + cookie.split(';').length + ' 项 · ' + await pixivR18State();
+    } catch (err) {
+      status.textContent = String(err && err.message ? err.message : err).slice(0, 90);
+    }
+  }
+
+  /* One R-18 query tells whether the account may actually see such works. */
+  async function pixivR18State() {
+    try {
+      var url = 'https://www.pixiv.net/ajax/search/artworks/%E3%83%86%E3%82%B9%E3%83%88?' + [
+        'word=' + encodeURIComponent('テスト'), 'p=1', 'lang=zh', 'mode=r18'
+      ].join('&');
+      var r = await ctx.get(url, { headers: E.getSource('pixiv').headers() });
+      var json = JSON.parse(r.body);
+      var list = ((json.body && json.body.illustManga) || {}).data || [];
+      var r18 = list.filter(function (it) { return String(it.xRestrict) !== '0'; }).length;
+      return r18 > 0 ? ('R-18 已开启（本次检索 ' + r18 + ' 条）') : '账号似乎未开启 R-18 显示（检索 0 条）';
+    } catch (err) {
+      return 'R-18 状态未知';
+    }
+  }
+
   function commitRoot(path) {
     App.settings.root = path;
     var form = $('fields');
@@ -953,6 +1002,7 @@
     form.jmDescramble.checked = App.settings.jmDescramble !== false;
     form.ua.value = App.settings.ua || '';
     form.perSource.value = String(App.settings.perSource || 20);
+    form.pixivCookie.value = App.settings.pixivCookie || '';
   }
 
   function setView(view) {
@@ -989,6 +1039,10 @@
     });
     $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
     if ($('jmProbe')) $('jmProbe').addEventListener('click', probeJm);
+    if ($('pixivLogin')) {
+      if (window.NousPlugin) $('pixivLogin').addEventListener('click', passPixivLogin);
+      else $('pixivLogin').hidden = true;
+    }
     if ($('dlTest')) $('dlTest').addEventListener('click', testDownload);
     $('pickerUp').addEventListener('click', function () { Picker.up(); });
     $('pickerNew').addEventListener('click', function () { Picker.create(); });
@@ -1017,6 +1071,13 @@
       App.settings.ua = form.ua.value.trim();
       E.setUserAgent(App.settings.ua);
       App.settings.perSource = Math.min(60, Math.max(4, parseInt(form.perSource.value, 10) || 20));
+      App.settings.pixivCookie = form.pixivCookie.value.trim();
+      if (App.settings.pixivCookie) {
+        var pxHosts = ['pixiv.net', '.pixiv.net', 'www.pixiv.net'];
+        for (var pi = 0; pi < pxHosts.length; pi++) {
+          await Host.invoke('cookie.set', { host: pxHosts[pi], cookie: App.settings.pixivCookie }).catch(function () {});
+        }
+      }
       var start = Math.max(1, parseInt(form.start.value, 10) || 1);
       App.counter = start;
       await saveSettings();

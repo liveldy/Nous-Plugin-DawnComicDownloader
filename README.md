@@ -68,6 +68,17 @@ D:\Manga\
 1. **设置页按钮**（推荐）：`设置 → 过 Cloudflare 校验`。宿主会开一个隔离窗口打开 18comic 域名，你完成站点的人机校验后，窗口自动关闭，`cf_clearance` 等 Cookie 直接写进设置与原生模块的 cookie 罐。窗口使用的 User-Agent 与之后引擎请求用的完全一致（`cf_clearance` 同时绑定 UA 和出口 IP，两边不一致会被判为无效）。
 2. **手动复制**：浏览器打开站点并过校验 → DevTools → Application → Cookies → `https://18comic.vip` → 复制 `cf_clearance` 的值（连同 `__cf_bm` 更好）→ 粘进 `设置 → 禁漫 Cookie`，形如 `cf_clearance=xxx; __cf_bm=yyy`。手动的代价是要自己保证浏览器 UA 与插件默认 UA（桌面 Chrome 131）一致、且与插件走同一出口 IP。
 
+### Pixiv 的 R-18
+
+R-18 不是地址问题，是账号设置问题：Pixiv 对**未登录或未开启 R-18 显示**的会话直接不返回这类作品（检索里看不到，详情返回 `{"error":true}`）。
+
+两条路：
+
+1. **设置 → 登录 Pixiv**（推荐）：宿主开隔离窗口，你登录并在 pixiv 的账号设置里把「閲覧制限 R-18」打开；窗口关闭后 `PHPSESSID` 等 Cookie 自动写入设置与 cookie 罐，并立刻做一次 R-18 检索回报「已开启 / 未开启」。
+2. **手动粘贴**：浏览器登录 pixiv → DevTools → Application → Cookies → `https://www.pixiv.net` → 复制 `PHPSESSID`，粘进「设置 → Pixiv Cookie」，保存时会同时写入 `pixiv.net` / `.pixiv.net` / `www.pixiv.net` 三个域。
+
+图片仍在 `i.pximg.net`，只校验 `Referer: https://www.pixiv.net/`，插件自动带上。
+
 Cookie 会过期（Cloudflare 通常几十分钟），过期后检索会重新报 `E_CHALLENGE`，再过一次校验即可。该站的解析按社区客户端的结构实现，**未在本机通过质询验证**，页面结构变化时会在结果里报 `E_PARSE`。
 
 ## 开发
