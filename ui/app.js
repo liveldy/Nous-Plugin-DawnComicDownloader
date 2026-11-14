@@ -556,7 +556,18 @@
       g.drawImage(bitmap, 0, band.src, bitmap.width, band.h, 0, band.dst, bitmap.width, band.h);
     });
     if (bitmap.close) bitmap.close();
-    var blob = await canvasToBlob(canvas);
+
+    /* PNG of a manga page runs 1.5–3 MB and every byte crosses the host IPC.
+     * Over 600 KB it is re-encoded as JPEG 0.92 — a fifth of the payload, still
+     * clean for line art — and the file name follows the real format. */
+    var blob = await canvasToBlob(canvas, 'image/png');
+    if (blob.size > 600 * 1024) {
+      var jpeg = await canvasToBlob(canvas, 'image/jpeg', 0.92);
+      if (jpeg.size < blob.size) {
+        blob = jpeg;
+        path = path.replace(/\.png$/i, '.jpg');
+      }
+    }
     var buffer = await blob.arrayBuffer();
     try {
       await writeBytes(path, new Uint8Array(buffer));
@@ -657,6 +668,7 @@
         if (!wrote) continue;
         first = false;
         offset += size;
+        if (offset < bytes.length) await new Promise(function (r) { setTimeout(r, 24); });
       }
     } catch (err) {
       await Host.invoke('fs.delete', { path: path }).catch(function () {});
