@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.3.0",
+  "version": "1.2.3",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -73,7 +73,7 @@
   },
   "changelog": [
     {
-      "version": "1.3.0",
+      "version": "1.2.3",
       "publishedAt": "2026-11-15",
       "changes": [
         "视频可按清晰度下载：Rule34Video 的播放页本来就把 360p / 480p / 720p 分开公布，现在详情会带回这些变体；设置里新增“视频清晰度（最高可用 / 720p / 480p / 360p）”，下载时按偏好挑选，缺失档位则回落到不高于目标的最高一档。其它源只有单一视频源时行为不变。",
