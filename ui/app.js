@@ -116,6 +116,7 @@
     items: [],
     seen: {},
     pages: {},
+    pending: {},
     exhausted: {},
     results: {},
     queue: [],
@@ -521,6 +522,24 @@
 
   /* -------------------------------------------------------------- search */
 
+  /* Drains at most `limit` unseen items of one source out of its buffer. */
+  function drainPending(id, limit, fresh) {
+    var pool = App.pending[id] || (App.pending[id] = []);
+    var taken = 0;
+    while (pool.length && taken < limit) {
+      var it = pool.shift();
+      if (App.seen[it.uid]) continue;
+      App.seen[it.uid] = 1;
+      fresh.push(it);
+      taken++;
+    }
+    return taken;
+  }
+
+  function pendingLeft(id) {
+    return (App.pending[id] || []).length;
+  }
+
   async function runSearch(page, append, only) {
     if (App.view !== 'search') App.setView('search');
     var query = App.mode === 'text' ? $('q').value.trim() : App.query;
@@ -530,40 +549,42 @@
     $('blank').hidden = true;
     var active = E.sourceInfo().map(function (s) { return s.id; }).filter(function (id) { return !App.disabled[id]; });
     if (only) active = [only];
-    /* With a source filter on, “more” may only advance that source — otherwise new
-     * rows land in categories the user is not looking at. */
+    /* With a source filter on, "more" may only advance that source. */
     if (append && App.filter) active = [App.filter];
+    var limit = Math.max(1, parseInt(App.settings.perSource, 10) || 20);
 
-    /* Each source keeps its own page cursor: they paginate at different sizes,
-     * and one of them (Xpicvid) only reacts to a page number on its result URL. */
-    var pages = {};
     if (!append) {
-      active.forEach(function (id) { pages[id] = 1; });
-    } else {
-      active.forEach(function (id) {
-        if (App.exhausted[id]) return;
-        pages[id] = (App.pages[id] || 1) + 1;
-      });
-      if (!Object.keys(pages).length) { App.scanning = false; return; }
+      App.items = [];
+      App.seen = {};
+      App.pending = {};
+      App.pages = {};
+      App.exhausted = {};
+      App.filter = null;
+      App.kind = null;
     }
 
-    active.forEach(function (id) { if (pages[id]) setSiteState(id, 'busy', 0); });
+    /* Only sources with an empty buffer need a request; page number is per source. */
+    var need = active.filter(function (id) { return !append || (!pendingLeft(id) && !App.exhausted[id]); });
+    if (!need.length) {
+      var drainedOnly = [];
+      active.forEach(function (id) { drainPending(id, limit, drainedOnly); });
+      App.items = App.items.concat(drainedOnly);
+      renderItems(true);
+      renderFilters();
+      $('more').hidden = !active.some(function (id) { return pendingLeft(id) || !App.exhausted[id]; }) || App.items.length < 8;
+      App.scanning = false;
+      return;
+    }
+
+    var pages = {};
+    need.forEach(function (id) {
+      pages[id] = append ? (App.pages[id] || 1) + 1 : 1;
+      setSiteState(id, 'busy', 0);
+    });
     $('tally').textContent = '检索中';
 
     try {
-      var res = await E.searchAll(ctx, {
-        query: query, sources: Object.keys(pages), pages: pages,
-        limit: Math.max(1, parseInt(App.settings.perSource, 10) || 20)
-      });
-      if (!append) {
-        App.items = [];
-        App.seen = {};
-        App.exhausted = {};
-        App.pages = {};
-        App.filter = null;
-        App.kind = null;
-      }
-      var fresh = [];
+      var res = await E.searchAll(ctx, { query: query, sources: need, pages: pages, limit: 0 });
       var failed = 0;
       res.results.forEach(function (r) {
         if (r.error) {
@@ -573,28 +594,36 @@
           if (siteEl) siteEl.title = r.error;
           return;
         }
-        var kept = r.items.filter(function (it) { return !App.seen[it.uid]; });
-        if (append && r.items.length && !kept.length) App.exhausted[r.id] = true;
-        if (!r.hasMore) App.exhausted[r.id] = true;
-        kept.forEach(function (it) { App.seen[it.uid] = 1; });
-        fresh = fresh.concat(kept);
+        App.pages[r.id] = pages[r.id];
+        var pool = App.pending[r.id] || (App.pending[r.id] = []);
+        r.items.forEach(function (it) { pool.push(it); });
+        if (!r.items.length) App.exhausted[r.id] = true;
         setSiteState(r.id, r.items.length ? 'idle' : 'empty', r.items.length);
       });
-      Object.keys(pages).forEach(function (id) { App.pages[id] = pages[id]; });
+
+      var fresh = [];
+      active.forEach(function (id) {
+        var before = fresh.length;
+        drainPending(id, limit, fresh);
+        if (append && !App.pending[id].length && fresh.length === before) {
+          /* a page that only repeated what is already on screen ends the stream */
+          if (pages[id]) App.exhausted[id] = true;
+        }
+      });
       App.items = App.items.concat(fresh);
       App.results = res;
       renderItems(true);
       renderFilters();
       var shown = App.items.length;
       $('tally').textContent = shown ? shown + (failed ? ' · ' + failed + ' 站未响应' : '') : '0';
-      var more = Object.keys(pages).some(function (id) { return !App.exhausted[id]; });
+      var more = active.some(function (id) { return pendingLeft(id) || !App.exhausted[id]; });
       $('more').hidden = shown < 8 || !more;
       if (!shown) {
         $('blank').textContent = failed
           ? '这些站点没有响应：先在设置里点“测试禁漫”，其余检查网络与 cookie。'
           : '没有命中。换一个 tag，或把底部某个站点关掉再试其它站。';
         $('blank').hidden = false;
-      } else if (append && !fresh.length) {
+      } else if (append && !fresh.length && !more) {
         $('tally').textContent = shown + ' · 没有更多了';
       }
     } catch (e) {
