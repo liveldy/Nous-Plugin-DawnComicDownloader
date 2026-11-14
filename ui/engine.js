@@ -535,7 +535,9 @@
       var status = res.status || 0;
       var size = (html || '').length;
       if (jm.challengeCheck(html) || status === 403 || status === 429 || status === 451 || status === 503) {
-        throw new Error('E_CHALLENGE: ' + where + ' 被站点拦截（HTTP ' + status + '，' + size + 'B）：Cookie 过期、UA 不一致或出口 IP 变了');
+        var head = collapse(stripTags((html || '').slice(0, 400))).slice(0, 80);
+        throw new Error('E_CHALLENGE: ' + where + ' 被站点拦截（HTTP ' + status + '，' + size + 'B' +
+          (head ? '，页面开头「' + head + '」' : '') + '）');
       }
       if (status >= 400) throw new Error('E_HTTP: ' + where + ' HTTP ' + status + '（' + size + 'B）');
       if (!size) throw new Error('E_EMPTY: ' + where + ' 空响应（HTTP ' + status + '）');
@@ -670,16 +672,15 @@
         var chain = Promise.resolve();
         queue.forEach(function (pid) {
           chain = chain.then(function () {
-            return ctx.get(base + '/photo/' + pid + '/', { headers: baseHeaders(base + '/album/' + aid + '/', true) })
-              .then(function (r) {
-                var body = jm.unwrap(r.body);
-                jm.assertUsable(r, body, '章节');
-                var scramble = (/var scramble_id = (\d+);/.exec(body) || [])[1] || meta.scrambleId;
-                jm.pageUrls(body, base).forEach(function (url) {
-                  var file = url.split('/').pop().split('?')[0];
-                  pages.push({ url: url, num: jmScrambleNum(scramble, aid, file), scrambleId: scramble, aid: aid });
-                });
+            return jm.fetchChapter(ctx, base, aid, pid, meta).then(function (r) {
+              var body = jm.unwrap(r.body);
+              jm.assertUsable(r, body, '章节 ' + pid);
+              var scramble = (/var scramble_id = (\d+);/.exec(body) || [])[1] || meta.scrambleId;
+              jm.pageUrls(body, base).forEach(function (url) {
+                var file = url.split('/').pop().split('?')[0];
+                pages.push({ url: url, num: jmScrambleNum(scramble, aid, file), scrambleId: scramble, aid: aid });
               });
+            });
           });
         });
         return chain.then(function () {
@@ -691,6 +692,32 @@
           };
         });
       });
+    },
+
+    /* 18comic challenges /photo/ harder than /search/ and /album/. Retry once
+     * after a pause, then try the forms the site has used for chapter pages. */
+    fetchChapter: function (ctx, base, aid, pid, meta) {
+      var referer = base + '/album/' + aid + '/';
+      var forms = ['/photo/' + pid + '/', '/photo/' + pid, '/chapter/' + pid + '/'];
+      var header = baseHeaders(referer, true);
+      var attempt = function (index) {
+        if (index >= forms.length) {
+          return ctx.get(base + forms[0], { headers: header });
+        }
+        return ctx.get(base + forms[index], { headers: header }).then(function (res) {
+          var blocked = (res.status === 403 || res.status === 429 || res.status === 503 ||
+            jm.challengeCheck(jm.unwrap(res.body)));
+          if (!blocked) return res;
+          return new Promise(function (r) { setTimeout(r, 1500); }).then(function () {
+            return ctx.get(base + forms[index], { headers: header }).then(function (again) {
+              var stillBlocked = (again.status === 403 || again.status === 429 || again.status === 503 ||
+                jm.challengeCheck(jm.unwrap(again.body)));
+              return stillBlocked ? attempt(index + 1) : again;
+            });
+          });
+        }, function () { return attempt(index + 1); });
+      };
+      return attempt(0);
     },
 
     pageUrls: function (html, base) {
