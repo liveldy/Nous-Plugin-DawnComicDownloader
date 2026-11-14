@@ -121,12 +121,34 @@
     return UA_OVERRIDE || UA;
   }
 
-  function baseHeaders(referer) {
-    var h = {
-      'User-Agent': currentUserAgent(),
-      'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7'
+  /* Cloudflare compares the client hints against the User-Agent, so they are
+   * derived from it rather than hardcoded. */
+  function chromeHints(ua) {
+    var m = /Chrome\/(\d+)/.exec(ua || '');
+    var major = m ? m[1] : '131';
+    return {
+      'sec-ch-ua': '"Chromium";v="' + major + '", "Not_A Brand";v="24", "Google Chrome";v="' + major + '"',
+      'sec-ch-ua-mobile': '?0',
+      'sec-ch-ua-platform': '"Windows"'
     };
+  }
+
+  function baseHeaders(referer, withHints) {
+    var ua = currentUserAgent();
+    var h = {
+      'User-Agent': ua,
+      'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7',
+      'Upgrade-Insecure-Requests': '1'
+    };
+    if (withHints) {
+      var hints = chromeHints(ua);
+      for (var k in hints) h[k] = hints[k];
+      h['Sec-Fetch-Dest'] = 'document';
+      h['Sec-Fetch-Mode'] = 'navigate';
+      h['Sec-Fetch-Site'] = referer ? 'same-origin' : 'none';
+      h['Sec-Fetch-User'] = '?1';
+    }
     if (referer) h.Referer = referer;
     return h;
   }
@@ -217,7 +239,7 @@
         var readerHref = /href="([^"]*moeupup-[^"]+\.html)"/.exec(html);
         if (!readerHref) throw new Error('E_PARSE: 未找到阅读器入口');
         var reader = absolute(niacg.base, readerHref[1].replace(/&amp;/g, '&'));
-        return ctx.get(reader, { headers: baseHeaders(item.url) }).then(function (r2) {
+        return ctx.get(reader, { headers: baseHeaders(item.url, true) }).then(function (r2) {
           var pages = niacg.pages(r2.body || '');
           if (!pages.length) throw new Error('E_PARSE: 阅读器没有图片');
           return { meta: meta, pages: pages, reader: reader };
@@ -330,7 +352,7 @@
         var tags = [];
         var tm = /"name_ch2":"([^"]{1,40})"/g, m;
         while ((m = tm.exec(html))) tags.push(decodeEntities(m[1]).replace(/\\u([0-9a-f]{4})/gi, function (_, h) { return String.fromCharCode(parseInt(h, 16)); }));
-        return ctx.get(url, { headers: baseHeaders(item.url) }).then(function (r2) {
+        return ctx.get(url, { headers: baseHeaders(item.url, true) }).then(function (r2) {
           var pages = ahri.pages(r2.body || '');
           if (!pages.length) throw new Error('E_PARSE: 阅读器结构变化');
           return {
@@ -558,7 +580,7 @@
       var p = Math.max(1, page || 1);
       var q = collapse(query);
       if (/^\d{2,}$/.test(q)) {
-        return ctx.get(base + '/album/' + q + '/', { headers: baseHeaders(base + '/') }).then(function (res) {
+        return ctx.get(base + '/album/' + q + '/', { headers: baseHeaders(base + '/', true) }).then(function (res) {
           var html = jm.unwrap(res.body);
           if (jm.challengeCheck(html)) throw new Error('E_CHALLENGE: 需要先通过站点人机校验');
           var meta = jm.albumMeta(html);
@@ -569,7 +591,7 @@
         });
       }
       var url = base + '/search/photos?' + qs({ search_query: q, page: p, main_tag: 0, o: 'mr', t: 'a' });
-      return ctx.get(url, { headers: baseHeaders(base + '/') }).then(function (res) {
+      return ctx.get(url, { headers: baseHeaders(base + '/', true) }).then(function (res) {
         var html = jm.unwrap(res.body);
         jm.assertUsable(res, html, '检索');
         var items = jm.parseCards(html, base);
@@ -583,7 +605,7 @@
     browse: function (ctx, page) {
       var base = jm.baseOf(ctx);
       var p = Math.max(1, page || 1);
-      return ctx.get(base + '/albums?page=' + p, { headers: baseHeaders(base + '/') }).then(function (res) {
+      return ctx.get(base + '/albums?page=' + p, { headers: baseHeaders(base + '/', true) }).then(function (res) {
         var html = jm.unwrap(res.body);
         jm.assertUsable(res, html, '浏览');
         var items = jm.parseCards(html, base);
@@ -638,7 +660,7 @@
     detail: function (ctx, item) {
       var base = jm.baseOf(ctx);
       var aid = String(item.id || '');
-      return ctx.get(item.url || (base + '/album/' + aid + '/'), { headers: baseHeaders(base + '/') }).then(function (res) {
+      return ctx.get(item.url || (base + '/album/' + aid + '/'), { headers: baseHeaders(base + '/', true) }).then(function (res) {
         var html = jm.unwrap(res.body);
         jm.assertUsable(res, html, '本子详情');
         var meta = jm.albumMeta(html);
@@ -648,7 +670,7 @@
         var chain = Promise.resolve();
         queue.forEach(function (pid) {
           chain = chain.then(function () {
-            return ctx.get(base + '/photo/' + pid + '/', { headers: baseHeaders(base + '/album/' + aid + '/') })
+            return ctx.get(base + '/photo/' + pid + '/', { headers: baseHeaders(base + '/album/' + aid + '/', true) })
               .then(function (r) {
                 var body = jm.unwrap(r.body);
                 jm.assertUsable(r, body, '章节');

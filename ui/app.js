@@ -399,6 +399,13 @@
     $('openroot').hidden = !root;
   }
 
+  function reportError(title, message) {
+    var box = $('qerr');
+    if (!box) return;
+    box.hidden = false;
+    box.textContent = title.slice(0, 28) + ' — ' + message;
+  }
+
   function statusLine(row) {
     if (row.state === 'queued') return row.item.sourceLabel + ' · 待下载';
     if (row.state === 'working') return row.total ? row.done + '/' + row.total : '解析中';
@@ -549,6 +556,36 @@
    * challenge, and hand back the cookies for the declared domain — with the
    * same User-Agent the engine will use afterwards (cf_clearance is bound to
    * UA + client IP, so the two must match). */
+  /* allowRoot → mkdirs → download → list, with the error text kept verbatim so a
+   * failing install can be diagnosed without guessing which hop broke. */
+  async function testDownload() {
+    var status = $('jmStatus');
+    var root = ($('fields').root.value || App.settings.root || '').trim();
+    var steps = [];
+    if (!root) { status.textContent = '先填下载目录'; return; }
+    status.textContent = '测试中…';
+    try {
+      await Host.invoke('fs.allowRoot', { path: root });
+      steps.push('allowRoot ok');
+      var dir = root.replace(/[\\/]+$/, '') + '\\_selftest';
+      await Host.invoke('fs.mkdirs', { path: dir });
+      steps.push('mkdirs ok');
+      var got = await Host.invoke('http.download', {
+        url: 'https://hentaileague.com/wp-json/',
+        path: dir + '\\probe.json',
+        headers: { 'User-Agent': E.currentUserAgent() },
+        skipExisting: false,
+        timeoutMs: 60000
+      });
+      steps.push('download ' + got.bytes + 'B ' + (got.contentType || ''));
+      await Host.invoke('fs.delete', { path: dir });
+      steps.push('清理 ok');
+    } catch (err) {
+      steps.push('失败：' + String(err && err.message ? err.message : err).slice(0, 120));
+    }
+    status.textContent = steps.join(' · ');
+  }
+
   /* One line the user can paste back: root status, search status and how many
    * cards parsed, and which hosts the jar holds. */
   async function probeJm() {
@@ -749,6 +786,7 @@
         var plan = E.planExport(row.item, {
           root: root, index: App.counter, width: App.settings.width, pages: detail.pages
         });
+        if (!plan.files.length) throw new Error('解析到 0 页：' + (detail.count ? '站点说有 ' + detail.count + ' 页但没取到图' : '章节里没有可用图片'));
         row.total = plan.files.length;
         row.done = 0;
         renderQueue();
@@ -768,7 +806,8 @@
         }).catch(function () {});
       } catch (err) {
         row.state = 'failed';
-        row.msg = String(err && err.message ? err.message : err).slice(0, 60);
+        row.msg = String(err && err.message ? err.message : err);
+        reportError(row.item.title, row.msg);
       }
       renderQueue();
     }
@@ -883,6 +922,7 @@
     });
     $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
     if ($('jmProbe')) $('jmProbe').addEventListener('click', probeJm);
+    if ($('dlTest')) $('dlTest').addEventListener('click', testDownload);
     $('pickerUp').addEventListener('click', function () { Picker.up(); });
     $('pickerNew').addEventListener('click', function () { Picker.create(); });
     $('pickerCancel').addEventListener('click', function () { $('picker').hidden = true; });
@@ -939,6 +979,9 @@
       await loadState();
       E.setUserAgent(App.settings.ua || '');
       renderQueue();
+      if (App.settings.root) {
+        await Host.invoke('fs.allowRoot', { path: App.settings.root }).catch(function () {});
+      }
       try {
         var info = await Host.invoke('engine.info', {});
         App.engineVersion = info && info.version ? info.version : '';

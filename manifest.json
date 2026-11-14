@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -65,6 +65,16 @@
     }
   },
   "changelog": [
+    {
+      "version": "1.0.7",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "下载“只有空文件夹”：解析到 0 页现在按失败处理并说明原因；下载结果 bytes=0 视为失败；队列底部新增错误行，保留最近一次失败的完整信息（不再截断到 60 字）。",
+        "设置新增“测试下载”：按 allowRoot → mkdirs → http.download → list 的顺序跑一遍并逐段回报，出错时给出原始错误，便于定位是哪一跳断了。",
+        "启动时若已有下载目录，主动 fs.allowRoot 一次，避免只有恢复设置、没点保存的会话写入被拒。",
+        "禁漫请求补上浏览器一致的 client hints（sec-ch-ua / sec-ch-ua-platform / Sec-Fetch-* / Upgrade-Insecure-Requests），并随“请求 UA”里的版本号推导；Cloudflare 会比对 UA 与这些提示。"
+      ]
+    },
     {
       "version": "1.0.6",
       "publishedAt": "2026-11-14",

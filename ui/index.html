@@ -53,6 +53,7 @@
     <div class="qbar" aria-hidden="true"><i id="qbar"></i></div>
     <ol class="qlist" id="qlist"></ol>
     <p class="qempty" id="qempty">选中结果后会排在这里，按编号写入下载目录。</p>
+    <p class="qerr" id="qerr" hidden></p>
     <div class="qfoot">
       <span id="rootline"></span>
       <button class="ghost" id="openroot" type="button" hidden>打开目录</button>
@@ -111,6 +112,7 @@
     <div class="inline span">
       <button class="ghost-btn" type="button" id="jmLogin">过 Cloudflare 校验</button>
       <button class="ghost-btn" type="button" id="jmProbe">测试禁漫</button>
+      <button class="ghost-btn" type="button" id="dlTest">测试下载</button>
       <span class="jmstatus" id="jmStatus" aria-live="polite"></span>
     </div>
     <label class="check"><input name="jmDescramble" type="checkbox" checked> 还原乱序页图</label>
