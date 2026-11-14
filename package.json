@@ -6,7 +6,7 @@
   "description": "DawnComicDownloader — gallery search and download plugin for Nous.",
   "license": "MIT",
   "scripts": {
-    "test": "node --test test/engine.test.mjs",
+    "test": "node --test test/engine.test.mjs test/page.test.mjs",
     "pack": "node sdk/pack.mjs .",
     "check": "node sdk/check.mjs ."
   }

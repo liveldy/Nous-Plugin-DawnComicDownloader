@@ -138,6 +138,23 @@
   </div>
 </div>
 
+<script>
+  /* Runs before anything else: a parse error or a rejected promise in the
+   * bundle must say so on screen instead of leaving a dead panel. */
+  window.addEventListener('error', function (e) {
+    var el = document.getElementById('blank');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = '页面脚本出错：' + ((e && e.message) || '未知错误');
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    var r = e && e.reason;
+    var el = document.getElementById('blank');
+    if (!el) return;
+    el.hidden = false;
+    el.textContent = '页面初始化失败：' + ((r && (r.message || r)) || 'promise rejected');
+  });
+</script>
 <script src="demo-host.js"></script>
 <script src="nous-plugin.js"></script>
 <script src="engine.js"></script>

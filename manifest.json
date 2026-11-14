@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -65,6 +65,15 @@
     }
   },
   "changelog": [
+    {
+      "version": "1.0.17",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "修复界面完全无响应：上个版本的整块替换误删了 probeJm / passChallenge / testDownload / commitRoot 以及 makeCanvas / canvasToBlob 的**定义**，bind() 一执行就抛 ReferenceError，页面因此点什么都没反应。六个函数已补回。",
+        "页面现在不会静默死掉：index.html 在任何脚本之前安装 error / unhandledrejection 监听，出错直接显示在结果区；boot 也包了 try/catch，并单独提示 engine.js 未加载。",
+        "新增 test/page.test.mjs（6 项静态检查）：bind() 引用的具名处理函数必须存在、用到的 DOM id 必须在 index.html 里、脚本顺序正确、canvas 辅助函数各只有一份、设置/选择器控件齐全、引擎导出的方法齐全——这次的问题下次会在提交前被拦下。"
+      ]
+    },
     {
       "version": "1.0.16",
       "publishedAt": "2026-11-14",

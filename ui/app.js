@@ -679,6 +679,137 @@
       throw new Error(note);
     }
   }
+  /* Canvas helpers. They were lost in an earlier edit that replaced a block of
+   * this file wholesale; the descramble path needs both. */
+  function makeCanvas(w, h) {
+    if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(w, h);
+    var c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    return c;
+  }
+
+  function canvasToBlob(canvas, type, quality) {
+    type = type || 'image/png';
+    var opts = { type: type };
+    if (quality) opts.quality = quality;
+    if (canvas.convertToBlob) return canvas.convertToBlob(opts);
+    return new Promise(function (resolve) { canvas.toBlob(resolve, type, quality); });
+  }
+
+  /* ------------------------------------------------- settings diagnostics */
+
+  /* allowRoot → mkdirs → download → delete, with the error text kept verbatim so
+   * a failing install can be diagnosed without guessing which hop broke. */
+  async function testDownload() {
+    var status = $('jmStatus');
+    var root = ($('fields').root.value || App.settings.root || '').trim();
+    var steps = [];
+    if (!root) { status.textContent = '先填下载目录'; return; }
+    status.textContent = '测试中…';
+    try {
+      await Host.invoke('fs.allowRoot', { path: root });
+      steps.push('allowRoot ok');
+      var dir = root.replace(/[\\/]+$/, '') + '\\_selftest';
+      await Host.invoke('fs.mkdirs', { path: dir });
+      steps.push('mkdirs ok');
+      var got = await Host.invoke('http.download', {
+        url: 'https://hentaileague.com/wp-json/',
+        path: dir + '\\probe.json',
+        headers: { 'User-Agent': E.currentUserAgent() },
+        skipExisting: false,
+        timeoutMs: 60000
+      });
+      steps.push('download ' + got.bytes + 'B ' + (got.contentType || ''));
+      await Host.invoke('fs.delete', { path: dir }).catch(function () {});
+      steps.push('清理 ok');
+    } catch (err) {
+      steps.push('失败：' + String(err && err.message ? err.message : err).slice(0, 120));
+    }
+    status.textContent = steps.join(' · ');
+  }
+
+  /* The host opens an isolated window, lets the user pass the challenge, and
+   * hands back the cookies for the declared domain with the same User-Agent the
+   * engine uses afterwards (cf_clearance is bound to UA + client IP). */
+  async function passChallenge() {
+    var status = $('jmStatus');
+    var domain = App.settings.jmDomain || '18comic.vip';
+    if (!window.NousPlugin) { status.textContent = '只有正式宿主能开校验窗口'; return; }
+    status.textContent = '已打开窗口，完成站点校验后会自动保存';
+    try {
+      var res = await window.NousPlugin.request('runtime.webLogin', {
+        url: 'https://' + domain + '/',
+        domains: [domain],
+        cookieUrls: ['https://' + domain + '/'],
+        requiredCookies: [['cf_clearance']],
+        userAgents: { 'windows-x64': E.currentUserAgent() },
+        urls: { 'windows-x64': 'https://' + domain + '/' }
+      }, { timeoutMs: 600000 });
+      var cookie = String((res && res.cookie) || '');
+      if (!cookie) throw new Error('E_AUTH: 没有取到 Cookie');
+      App.settings.jmCookie = cookie;
+      $('fields').jmCookie.value = cookie;
+      await saveSettings();
+      await Host.invoke('cookie.set', { host: domain, cookie: cookie }).catch(function () {});
+      await Host.invoke('cookie.set', { host: '.' + domain, cookie: cookie }).catch(function () {});
+      var check = await ctx.get('https://' + domain + '/', { headers: E.baseHeaders('https://' + domain + '/', true) });
+      var ok = !E.getSource('jm').challengeCheck(check.body) && check.status < 400;
+      status.textContent = '已保存 ' + cookie.split(';').length + ' 项 · 复检 ' + check.status + '/' + check.body.length + 'B' + (ok ? '·通过' : '·仍被拦');
+    } catch (err) {
+      status.textContent = String(err && err.message ? err.message : err).slice(0, 80);
+    }
+  }
+
+  /* One line the user can paste back: home, search, the first album's chapters,
+   * the cookies the jar holds and the User-Agent in use. */
+  async function probeJm() {
+    var status = $('jmStatus');
+    var domain = App.settings.jmDomain || '18comic.vip';
+    var base = 'https://' + domain;
+    var spec = E.getSource('jm');
+    var lines = [];
+    status.textContent = '测试中…';
+    try {
+      var home = await ctx.get(base + '/', { headers: E.baseHeaders(base + '/', true) });
+      lines.push('首页 ' + home.status + '/' + home.body.length + 'B' + (spec.challengeCheck(home.body) ? '·质询' : '·正常'));
+      var q = $('q').value.trim() || 'test';
+      var search = await ctx.get(base + '/search/photos?' + [
+        'search_query=' + encodeURIComponent(q), 'page=1', 'main_tag=0', 'o=mr', 't=a'
+      ].join('&'), { headers: E.baseHeaders(base + '/', true) });
+      var cards = spec.parseCards(spec.unwrap(search.body), base);
+      lines.push('检索 "' + q + '" ' + search.status + '/' + search.body.length + 'B/' + cards.length + '条' +
+        (spec.challengeCheck(search.body) ? '·质询' : ''));
+      if (cards.length) {
+        var first = cards[0];
+        var album = await ctx.get(first.url, { headers: E.baseHeaders(base + '/', true) });
+        var body = spec.unwrap(album.body);
+        var meta = E.parsers.jmAlbumMeta(body);
+        lines.push('本子 ' + first.id + ' ' + album.status + '/' + body.length + 'B · 章节 ' + meta.chapters.length +
+          ' · 页数 ' + (meta.count || 0) + ' · scramble ' + (meta.scrambleId || '—'));
+      }
+      var jar = await Host.invoke('cookie.list', {});
+      var hosts = (jar && jar.hosts) || {};
+      var named = Object.keys(hosts).map(function (h) {
+        var names = String(hosts[h] || '').split(';').map(function (p) { return p.split('=')[0].trim(); }).filter(Boolean);
+        return h + ':' + (names.join('/') || '空');
+      });
+      lines.push('Cookie ' + (named.length ? named.join(' , ') : '空'));
+      lines.push('UA ' + E.currentUserAgent().slice(0, 48));
+    } catch (err) {
+      lines.push('错误 ' + String(err && err.message ? err.message : err).slice(0, 70));
+    }
+    status.textContent = lines.join(' · ');
+  }
+
+  function commitRoot(path) {
+    App.settings.root = path;
+    var form = $('fields');
+    if (form) form.root.value = path;
+    Host.invoke('fs.allowRoot', { path: path }).catch(function () {});
+    saveSettings();
+    renderQueue();
+  }
   async function runQueue() {
     $('start').disabled = true;
     var rows = App.queue.filter(function (r) { return r.state === 'queued' || r.state === 'failed'; });
@@ -880,11 +1011,22 @@
   }
 
   (async function boot() {
-    renderSites();
-    renderGhosts();
-    bind();
-    renderQueue();
-    setMode('text');
+    if (!window.DawnEngine) {
+      $('blank').hidden = false;
+      $('blank').textContent = '引擎脚本没加载：ui/engine.js 缺失或被截断，请重装插件。';
+      return;
+    }
+    try {
+      renderSites();
+      renderGhosts();
+      bind();
+      renderQueue();
+      setMode('text');
+    } catch (err) {
+      $('blank').hidden = false;
+      $('blank').textContent = '页面初始化失败：' + String(err && err.message ? err.message : err);
+      return;
+    }
     try {
       await Host.ready;
       await loadState();
