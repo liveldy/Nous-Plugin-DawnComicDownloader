@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.1.3",
+  "version": "1.1.4",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -14,7 +14,8 @@
   ],
   "permissions": [
     "storage",
-    "native.runtime"
+    "native.runtime",
+    "external.open"
   ],
   "entry": "ui/index.html",
   "repository": "liveldy/Nous-Plugin-DawnComicDownloader",
@@ -38,7 +39,8 @@
     "runtime.invoke",
     "storage.get",
     "storage.set",
-    "runtime.webLogin"
+    "runtime.webLogin",
+    "external.open"
   ],
   "optionalMethods": [
     "storage.remove"
@@ -65,6 +67,14 @@
     }
   },
   "changelog": [
+    {
+      "version": "1.1.4",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "修复“登录校验配置无效”：宿主不接受只有 nonEmpty 的 validation（需要 equals），已移除该校验。登录窗口交回 Cookie 后改为主动请求 /ajax/user/self 判断是否真的登录，未登录就直接告诉你“窗口在登录前就关闭了”，并指向手动粘贴 PHPSESSID 的路径。",
+        "修正在下载过程中取消勾选的行为：搜索结果区的勾选只表示“是否已排入队列”，一旦该行开始下载或已完成，取消勾选只清掉卡片上的勾，不再影响下载队列与正在进行的下载（取消仍用队列行上的 ×）。"
+      ]
+    },
     {
       "version": "1.1.3",
       "publishedAt": "2026-11-14",

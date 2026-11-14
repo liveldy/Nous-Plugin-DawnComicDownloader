@@ -418,16 +418,23 @@
     return App.queue.some(function (r) { return r.uid === uid; });
   }
 
+  /* The card's tick mirrors "queued here, not started yet". Once a row is
+   * running (or finished), unticking the card only clears the tick — the
+   * download keeps going. Removing with the row's own × still cancels it. */
   function togglePick(item, card) {
     var at = App.queue.findIndex(function (r) { return r.uid === item.uid; });
     if (at >= 0) {
-      var gone = App.queue[at];
-      if (gone.state === 'working') gone.cancelled = true;
+      var row = App.queue[at];
+      if (row.state !== 'queued') {
+        card.setAttribute('aria-selected', 'false');
+        return;
+      }
       App.queue.splice(at, 1);
-      if (gone.state === 'working') toast('已取消：' + gone.item.title.slice(0, 24));
+      card.setAttribute('aria-selected', 'false');
+    } else {
+      App.queue.push({ uid: item.uid, item: item, state: 'queued', done: 0, total: 0, msg: '' });
+      card.setAttribute('aria-selected', 'true');
     }
-    else App.queue.push({ uid: item.uid, item: item, state: 'queued', done: 0, total: 0, msg: '' });
-    card.setAttribute('aria-selected', String(at < 0));
     renderQueue();
   }
 
@@ -882,9 +889,29 @@
       for (var i = 0; i < hosts.length; i++) {
         await Host.invoke('cookie.set', { host: hosts[i], cookie: cookie }).catch(function () {});
       }
-      status.textContent = '已保存 ' + cookie.split(';').length + ' 项 · ' + await pixivR18State();
+      var self = await pixivSelf();
+      if (!self) {
+        status.textContent = '窗口在登录前就关闭了（本次是匿名会话）。请改用：浏览器登录 pixiv → 复制 PHPSESSID → 粘到上方输入框 → 保存设置';
+        return;
+      }
+      status.textContent = '已登录 ' + self + ' · ' + await pixivR18State();
     } catch (err) {
       status.textContent = String(err && err.message ? err.message : err).slice(0, 90);
+    }
+  }
+
+
+  /* Who is signed in, if anyone: /ajax/user/self answers {userData:null} for an
+   * anonymous session, and an object with userId once logged in. */
+  async function pixivSelf() {
+    try {
+      var r = await ctx.get('https://www.pixiv.net/ajax/user/self', { headers: E.getSource('pixiv').headers() });
+      var json = JSON.parse(r.body);
+      var user = json && json.userData;
+      if (!user) return '';
+      return user.pixivId ? ('pixivId ' + user.pixivId) : ('userId ' + (user.userId || ''));
+    } catch (err) {
+      return '';
     }
   }
 
@@ -1111,6 +1138,12 @@
     });
     $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
     if ($('jmProbe')) $('jmProbe').addEventListener('click', probeJm);
+    if ($('pixivOpen')) {
+      $('pixivOpen').addEventListener('click', function () {
+        window.NousPlugin.request('external.open', { url: 'https://www.pixiv.net/setting_user.php' })
+          .catch(function () { toast('\u6d4f\u89c8\u5668\u6ca1\u80fd\u6253\u5f00'); });
+      });
+    }
     if ($('pixivLogin')) {
       if (window.NousPlugin) $('pixivLogin').addEventListener('click', passPixivLogin);
       else $('pixivLogin').hidden = true;
