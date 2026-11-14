@@ -420,7 +420,12 @@
 
   function togglePick(item, card) {
     var at = App.queue.findIndex(function (r) { return r.uid === item.uid; });
-    if (at >= 0) App.queue.splice(at, 1);
+    if (at >= 0) {
+      var gone = App.queue[at];
+      if (gone.state === 'working') gone.cancelled = true;
+      App.queue.splice(at, 1);
+      if (gone.state === 'working') toast('已取消：' + gone.item.title.slice(0, 24));
+    }
     else App.queue.push({ uid: item.uid, item: item, state: 'queued', done: 0, total: 0, msg: '' });
     card.setAttribute('aria-selected', String(at < 0));
     renderQueue();
@@ -850,13 +855,21 @@
   async function passPixivLogin() {
     var status = $('pixivStatus');
     if (!window.NousPlugin) { status.textContent = '只有正式宿主能开登录窗口'; return; }
-    status.textContent = '窗口已打开：登录时勾选「ログイン状態を保持」，并在账号设置里开启 R-18；两者齐了窗口才会关闭';
+    status.textContent = '窗口已打开：登录完成后它会自动关闭（以 pixiv 返回的登录态为准），随后请确认 R-18 是否已开启';
     try {
       var res = await window.NousPlugin.request('runtime.webLogin', {
         url: 'https://www.pixiv.net/',
         domains: ['pixiv.net', 'www.pixiv.net'],
         cookieUrls: ['https://www.pixiv.net/', 'https://www.pixiv.net/setting_user.php'],
-        requiredCookies: [['PHPSESSID'], ['login_keep']],
+        requiredCookies: [['PHPSESSID']],
+        // /ajax/user/self answers {"userData":null} until the account is really
+        // signed in; the host keeps the window open until this check passes.
+        validation: {
+          url: 'https://www.pixiv.net/ajax/user/self',
+          path: 'userData',
+          nonEmpty: true,
+          userAgent: E.currentUserAgent()
+        },
         userAgents: { 'windows-x64': E.currentUserAgent() },
         urls: { 'windows-x64': 'https://www.pixiv.net/' }
       }, { timeoutMs: 600000 });
@@ -942,10 +955,11 @@
       row.state = 'working';
       row.msg = '';
       renderQueue();
+      var plan = null;
       try {
         var spec = E.getSource(row.item.source);
         var detail = await spec.detail(ctx, row.item.raw);
-        var plan = E.planExport(row.item, {
+        plan = E.planExport(row.item, {
           root: root, index: App.counter, width: App.settings.width, pages: detail.pages
         });
         if (!plan.files.length) throw new Error('解析到 0 页：' + (detail.count ? '站点说有 ' + detail.count + ' 页但没取到图' : '章节里没有可用图片'));
@@ -954,12 +968,15 @@
         renderQueue();
         await Host.invoke('fs.mkdirs', { path: plan.dir });
         for (var f = 0; f < plan.files.length; f++) {
+          if (row.cancelled) throw { cancelled: true };
           var file = plan.files[f];
           await downloadPage(file, plan.dir, row.item.url, detail.pages[f]);
           row.done = f + 1;
           renderQueue();
         }
+        if (row.cancelled) throw { cancelled: true };
         row.state = 'done';
+        if (App.queue.indexOf(row) < 0) continue; // removed while running
         App.counter += 1;
         await Host.store('storage.set', { key: 'counter', value: App.counter });
         await Host.store('storage.set', {
@@ -967,9 +984,17 @@
           value: { title: row.item.title, source: row.item.source, dir: plan.dir, pages: plan.files.length, at: Date.now() }
         }).catch(function () {});
       } catch (err) {
-        row.state = 'failed';
-        row.msg = String(err && err.message ? err.message : err);
-        reportError(row.item.title, row.msg);
+        if ((err && err.cancelled) || row.cancelled) {
+          /* Cancelled from the card while running: drop the half-written folder
+           * and leave no counter step or library record behind. */
+          row.state = 'cancelled';
+          await Host.invoke('fs.delete', { path: plan ? plan.dir : '' }).catch(function () {});
+          reportError(row.item.title, '已取消，未写入记录');
+        } else {
+          row.state = 'failed';
+          row.msg = String(err && err.message ? err.message : err);
+          reportError(row.item.title, row.msg);
+        }
       }
       renderQueue();
     }

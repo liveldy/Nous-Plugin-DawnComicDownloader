@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -65,6 +65,14 @@
     }
   },
   "changelog": [
+    {
+      "version": "1.1.3",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "Pixiv 登录窗口提前关闭改为用宿主的 validation 门禁：/ajax/user/self 在未登录时返回 {\"userData\":null}，窗口只在 userData 非空（真正登录）后才关闭并交回 Cookie；不再依赖登录前就会出现的 PHPSESSID。",
+        "下载中途取消生效：任务运行中取消勾选会把该行标记为已取消，当前页之后立即停下、删除半成品目录，不递增编号、不写库记录；已从队列移除的行不会在完成后重新计数。"
+      ]
+    },
     {
       "version": "1.1.2",
       "publishedAt": "2026-11-14",
