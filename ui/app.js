@@ -634,27 +634,32 @@
       await Picker.roots();
       await Picker.list();
     },
+    /* Drive letters are found by asking fs.list for each root: no extra module
+     * method, so switching drives works on a module that predates it. */
     async roots() {
       var bar = $('pickerRoots');
       bar.textContent = '';
-      try {
-        var res = await Host.invoke('fs.roots', {});
-        (res.roots || []).forEach(function (r) {
-          var b = document.createElement('button');
-          b.type = 'button';
-          b.textContent = r.name;
-          b.setAttribute('aria-pressed', String(Picker.path.toUpperCase().indexOf(r.name.toUpperCase()) === 0));
-          b.addEventListener('click', function () {
-            Picker.path = r.path;
-            $('pickerPath').value = r.path;
-            Picker.roots();
-            Picker.list();
-          });
-          bar.appendChild(b);
-        });
-      } catch (err) {
-        bar.textContent = '';
+      if (!Picker.drives) {
+        var letters = 'CDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+        var hits = await Promise.all(letters.map(function (L) {
+          var root = L + ':\\';
+          return Host.invoke('fs.list', { path: root }).then(function () { return root; }, function () { return null; });
+        }));
+        Picker.drives = hits.filter(Boolean);
       }
+      Picker.drives.forEach(function (root) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.textContent = root.slice(0, 2);
+        b.setAttribute('aria-pressed', String(Picker.path.toUpperCase().indexOf(root.toUpperCase()) === 0));
+        b.addEventListener('click', function () {
+          Picker.path = root;
+          $('pickerPath').value = root;
+          Picker.roots();
+          Picker.list();
+        });
+        bar.appendChild(b);
+      });
     },
     async list() {
       var list = $('pickerList');

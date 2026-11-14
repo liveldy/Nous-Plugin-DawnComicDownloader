@@ -58,9 +58,9 @@
       "entry": "app.dawncomic.PluginMain",
       "mainJar": "app/plugin.jar",
       "asset": {
-        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.6/DawnComicDownloader-windows-x64.module.zip",
-        "sha256": "78fdf0aad61775806c4dbced9514dd38e8cfe2a9af01d4890942536443408076",
-        "bytes": 16656328
+        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.5/DawnComicDownloader-windows-x64.module.zip",
+        "sha256": "7a4dc79c2ce118c99512d2cec7b888f80e1310df251b969d265688692a264f9c",
+        "bytes": 16656063
       }
     }
   },

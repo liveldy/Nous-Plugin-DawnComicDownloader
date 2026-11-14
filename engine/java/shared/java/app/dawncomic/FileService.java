@@ -1,6 +1,5 @@
 package app.dawncomic;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
@@ -382,25 +381,6 @@ public final class FileService {
         out.put("base64", Base64.getEncoder().encodeToString(data));
         out.put("bytes", (long) data.length);
         out.put("mime", mimeOf(path.getFileName().toString()));
-        return out;
-    }
-
-    /**
-     * Lists the mounted drive roots so the page's folder browser can switch drives.
-     *
-     * @return {@code {roots:[{name, path}]}}
-     */
-    public Map<String, Object> roots() {
-        List<Map<String, Object>> list = new ArrayList<>();
-        for (File root : File.listRoots()) {
-            Map<String, Object> entry = new LinkedHashMap<>();
-            String label = root.getAbsolutePath();
-            entry.put("name", label);
-            entry.put("path", label);
-            list.add(entry);
-        }
-        Map<String, Object> out = new LinkedHashMap<>();
-        out.put("roots", list);
         return out;
     }
 

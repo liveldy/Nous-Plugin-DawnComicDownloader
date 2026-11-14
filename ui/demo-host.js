@@ -110,9 +110,10 @@
       if (method === 'storage.set') return {ok: true};
       if (method === 'fs.allowRoot' || method === 'fs.mkdirs') return {path: params.path, created: false};
       if (method === 'system.chooseFolder') return {path: undefined};
-      if (method === 'fs.roots') return {roots: [{name: 'C:\\', path: 'C:\\'}, {name: 'D:\\', path: 'D:\\'}]};
       if (method === 'fs.list') {
         var base = (params.path || 'C:\\').replace(/[\\/]+$/, '');
+        if (!/^[CDZ]:$/.test(base)) throw new Error('E_IO: no such drive');
+        if (base === 'C:') return {path: base, entries: [{name: 'Windows', path: base + '\\Windows', dir: true, bytes: 0, mtime: 0}]};
         return {path: base, entries: ['Manga', 'Downloads', 'Pictures', 'Temp'].map(function (n) {
           return {name: n, path: base + '\\' + n, dir: true, bytes: 0, mtime: 0};
         })};
