@@ -110,6 +110,7 @@
       if (method === 'storage.set') return {ok: true};
       if (method === 'fs.allowRoot' || method === 'fs.mkdirs') return {path: params.path, created: false};
       if (method === 'system.chooseFolder') return {path: undefined};
+      if (method === 'fs.roots') return {roots: [{name: 'C:\\', path: 'C:\\'}, {name: 'D:\\', path: 'D:\\'}]};
       if (method === 'fs.list') {
         var base = (params.path || 'C:\\').replace(/[\\/]+$/, '');
         return {path: base, entries: ['Manga', 'Downloads', 'Pictures', 'Temp'].map(function (n) {

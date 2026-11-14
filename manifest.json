@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -58,13 +58,23 @@
       "entry": "app.dawncomic.PluginMain",
       "mainJar": "app/plugin.jar",
       "asset": {
-        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.5/DawnComicDownloader-windows-x64.module.zip",
-        "sha256": "7a4dc79c2ce118c99512d2cec7b888f80e1310df251b969d265688692a264f9c",
-        "bytes": 16656063
+        "url": "https://github.com/liveldy/Nous-Plugin-DawnComicDownloader/releases/download/v1.0.6/DawnComicDownloader-windows-x64.module.zip",
+        "sha256": "78fdf0aad61775806c4dbced9514dd38e8cfe2a9af01d4890942536443408076",
+        "bytes": 16656328
       }
     }
   },
   "changelog": [
+    {
+      "version": "1.0.6",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "修复下载必失败：storage.get/set 被错误地经 runtime.invoke 送进原生模块（模块回 E_UNSUPPORTED: storage.set）。现在 storage.* 走宿主 API，其余走 runtime.invoke；下载计数、库记录、站点开关、设置保存都恢复正常。",
+        "目录选择器支持切换盘符：模块新增 fs.roots，选择器顶部列出 C:\\ D:\\ 等盘符，点一下即切。",
+        "设置新增“请求 UA（可选）”：cf_clearance 绑定 UA，填入取得 Cookie 时浏览器真实的 UA 可消除“Cookie 有了仍被拦”。",
+        "“测试禁漫”改为输出 cookie 罐里的 Cookie 名（值不外泄）与当前 UA；“过 Cloudflare 校验”完成后立刻复检首页并显示通过/仍被拦。"
+      ]
+    },
     {
       "version": "1.0.5",
       "publishedAt": "2026-11-14",

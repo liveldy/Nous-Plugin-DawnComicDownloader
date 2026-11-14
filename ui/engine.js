@@ -109,9 +109,21 @@
 
   var UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
+  /* The browser's own User-Agent at challenge time can be set here: Cloudflare
+   * binds cf_clearance to it, so a mismatch looks exactly like an expired cookie. */
+  var UA_OVERRIDE = '';
+
+  function setUserAgent(value) {
+    UA_OVERRIDE = collapse(value || '');
+  }
+
+  function currentUserAgent() {
+    return UA_OVERRIDE || UA;
+  }
+
   function baseHeaders(referer) {
     var h = {
-      'User-Agent': UA,
+      'User-Agent': currentUserAgent(),
       'Accept': 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
       'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8,ja;q=0.7'
     };
@@ -1134,6 +1146,8 @@
   return {
     SOURCES: SOURCES,
     UA: UA,
+    currentUserAgent: currentUserAgent,
+    setUserAgent: setUserAgent,
     sourceInfo: sourceInfo,
     getSource: getSource,
     baseHeaders: baseHeaders,

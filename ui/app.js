@@ -15,6 +15,12 @@
     invoke: async function (method, params) {
       var r = await Host.ready;
       return r.invoke(method, params);
+    },
+    /* storage.* belongs to the host, not to the native engine: sending it through
+     * runtime.invoke made the module answer E_UNSUPPORTED on every download. */
+    store: async function (method, params) {
+      var r = await Host.ready;
+      return r.store(method, params);
     }
   };
 
@@ -22,7 +28,12 @@
     if (Demo) {
       document.documentElement.dataset.theme = Demo.theme || 'light';
       if (typeof Demo.onNav === 'function') Demo.onNav(setView);
-      return { invoke: Demo.invoke, plugin: { theme: Demo.theme || 'light' }, demo: true };
+      return {
+        invoke: Demo.invoke,
+        store: Demo.invoke,
+        plugin: { theme: Demo.theme || 'light' },
+        demo: true
+      };
     }
     if (!window.NousPlugin) throw new Error('E_HOST: 缺少宿主桥');
     var ctx = await window.NousPlugin.ready;
@@ -42,6 +53,9 @@
           }
           throw err;
         }
+      },
+      store: function (method, params) {
+        return window.NousPlugin.request(method, params || {});
       },
       plugin: ctx
     };
@@ -85,7 +99,7 @@
     results: {},
     queue: [],
     scanning: false,
-    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true },
+    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '' },
     disabled: {},
     filter: null,
     kind: null,
@@ -101,21 +115,21 @@
 
   async function loadState() {
     try {
-      var s = await Host.invoke('storage.get', { key: 'settings' });
+      var s = await Host.store('storage.get', { key: 'settings' });
       if (s && typeof s === 'object') App.settings = Object.assign(App.settings, s);
     } catch (e) { /* first run */ }
     try {
-      var c = await Host.invoke('storage.get', { key: 'counter' });
+      var c = await Host.store('storage.get', { key: 'counter' });
       if (c && typeof c === 'number') App.counter = c;
     } catch (e) { /* first run */ }
     try {
-      var d = await Host.invoke('storage.get', { key: 'disabled' });
+      var d = await Host.store('storage.get', { key: 'disabled' });
       if (d && typeof d === 'object') App.disabled = d;
     } catch (e) { /* first run */ }
   }
 
   function saveSettings() {
-    return Host.invoke('storage.set', { key: 'settings', value: App.settings }).catch(function () {});
+    return Host.store('storage.set', { key: 'settings', value: App.settings }).catch(function () {});
   }
 
   /* -------------------------------------------------------------- render */
@@ -149,7 +163,7 @@
         if (App.disabled[s.id]) delete App.disabled[s.id];
         else App.disabled[s.id] = 1;
         btn.setAttribute('aria-pressed', String(!App.disabled[s.id]));
-        Host.invoke('storage.set', { key: 'disabled', value: App.disabled }).catch(function () {});
+        Host.store('storage.set', { key: 'disabled', value: App.disabled }).catch(function () {});
       });
       wrap.appendChild(btn);
       loadFavicon(btn, s);
@@ -555,8 +569,13 @@
       lines.push('检索 "' + q + '" ' + search.status + '/' + search.body.length + 'B/' + cards.length + '条' +
         (spec.challengeCheck(search.body) ? '·质询' : ''));
       var jar = await Host.invoke('cookie.list', {});
-      var hosts = Object.keys((jar && jar.hosts) || {});
-      lines.push('Cookie ' + (hosts.length ? hosts.join(',') : '空'));
+      var hosts = (jar && jar.hosts) || {};
+      var named = Object.keys(hosts).map(function (h) {
+        var names = String(hosts[h] || '').split(';').map(function (p) { return p.split('=')[0].trim(); }).filter(Boolean);
+        return h + ':' + (names.join('/') || '空');
+      });
+      lines.push('Cookie ' + (named.length ? named.join(' , ') : '空'));
+      lines.push('UA ' + E.currentUserAgent().slice(0, 48));
     } catch (err) {
       lines.push('错误 ' + String(err && err.message ? err.message : err).slice(0, 70));
     }
@@ -584,7 +603,9 @@
       await saveSettings();
       await Host.invoke('cookie.set', { host: domain, cookie: cookie }).catch(function () {});
       await Host.invoke('cookie.set', { host: '.' + domain, cookie: cookie }).catch(function () {});
-      status.textContent = '已保存 ' + cookie.split(';').length + ' 项';
+      var check = await ctx.get('https://' + domain + '/', { headers: E.baseHeaders('https://' + domain + '/') });
+      var ok = !E.getSource('jm').challengeCheck(check.body) && check.status < 400;
+      status.textContent = '已保存 ' + cookie.split(';').length + ' 项 · 复检 ' + check.status + '/' + check.body.length + 'B' + (ok ? '·通过' : '·仍被拦');
     } catch (err) {
       status.textContent = String(err && err.message ? err.message : err).slice(0, 80);
     }
@@ -610,7 +631,30 @@
       Picker.path = from;
       $('pickerPath').value = from;
       $('picker').hidden = false;
+      await Picker.roots();
       await Picker.list();
+    },
+    async roots() {
+      var bar = $('pickerRoots');
+      bar.textContent = '';
+      try {
+        var res = await Host.invoke('fs.roots', {});
+        (res.roots || []).forEach(function (r) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = r.name;
+          b.setAttribute('aria-pressed', String(Picker.path.toUpperCase().indexOf(r.name.toUpperCase()) === 0));
+          b.addEventListener('click', function () {
+            Picker.path = r.path;
+            $('pickerPath').value = r.path;
+            Picker.roots();
+            Picker.list();
+          });
+          bar.appendChild(b);
+        });
+      } catch (err) {
+        bar.textContent = '';
+      }
     },
     async list() {
       var list = $('pickerList');
@@ -644,6 +688,7 @@
         li.textContent = String(err && err.message ? err.message : err).slice(0, 90);
         list.appendChild(li);
       }
+      Picker.roots();
     },
     up() {
       var p = Picker.path.replace(/[\\/]+$/, '');
@@ -711,8 +756,8 @@
         }
         row.state = 'done';
         App.counter += 1;
-        await Host.invoke('storage.set', { key: 'counter', value: App.counter });
-        await Host.invoke('storage.set', {
+        await Host.store('storage.set', { key: 'counter', value: App.counter });
+        await Host.store('storage.set', {
           key: 'library.' + App.counter,
           value: { title: row.item.title, source: row.item.source, dir: plan.dir, pages: plan.files.length, at: Date.now() }
         }).catch(function () {});
@@ -796,6 +841,7 @@
     form.jmCookie.value = App.settings.jmCookie || '';
     form.jmDomain.value = App.settings.jmDomain || '18comic.vip';
     form.jmDescramble.checked = App.settings.jmDescramble !== false;
+    form.ua.value = App.settings.ua || '';
   }
 
   function setView(view) {
@@ -856,10 +902,12 @@
       App.settings.jmCookie = form.jmCookie.value.trim();
       App.settings.jmDomain = (form.jmDomain.value.trim() || '18comic.vip').replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
       App.settings.jmDescramble = form.jmDescramble.checked;
+      App.settings.ua = form.ua.value.trim();
+      E.setUserAgent(App.settings.ua);
       var start = Math.max(1, parseInt(form.start.value, 10) || 1);
       App.counter = start;
       await saveSettings();
-      await Host.invoke('storage.set', { key: 'counter', value: App.counter }).catch(function () {});
+      await Host.store('storage.set', { key: 'counter', value: App.counter }).catch(function () {});
       if (App.settings.jmCookie) {
         var jmHost = App.settings.jmDomain;
         await Host.invoke('cookie.set', { host: jmHost, cookie: App.settings.jmCookie }).catch(function () {});
@@ -884,6 +932,7 @@
     try {
       await Host.ready;
       await loadState();
+      E.setUserAgent(App.settings.ua || '');
       renderQueue();
       try {
         var info = await Host.invoke('engine.info', {});

@@ -104,6 +104,10 @@
       <label for="jmCookieInput">禁漫 Cookie</label>
       <input id="jmCookieInput" name="jmCookie" type="text" placeholder="cf_clearance=..." spellcheck="false">
     </div>
+    <div class="field">
+      <label for="uaInput">请求 UA（可选）</label>
+      <input id="uaInput" name="ua" type="text" placeholder="留空即默认桌面 Chrome 131" spellcheck="false">
+    </div>
     <div class="inline span">
       <button class="ghost-btn" type="button" id="jmLogin">过 Cloudflare 校验</button>
       <button class="ghost-btn" type="button" id="jmProbe">测试禁漫</button>
@@ -119,6 +123,7 @@
   <div class="picker-box">
     <div class="picker-head">
       <input id="pickerPath" type="text" spellcheck="false" aria-label="当前路径">
+      <div class="picker-roots" id="pickerRoots"></div>
     </div>
     <ul class="picker-list" id="pickerList"></ul>
     <div class="picker-foot">

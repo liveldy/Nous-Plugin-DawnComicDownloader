@@ -159,6 +159,8 @@ public final class Engine {
                 return http.request(params);
             case "http.download":
                 return http.download(params);
+            case "fs.roots":
+                return files.roots();
             case "fs.list":
                 return files.list(Json.str(params, "path", ""));
             case "fs.stat":
