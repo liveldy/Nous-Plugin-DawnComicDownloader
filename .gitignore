@@ -1,8 +1,9 @@
 build/
 dist/
 .taste-skill/
+.research/
 shots/*.png
 shots/check/
 shots/dom.html
 node_modules/
-*.log.research/
+*.log
