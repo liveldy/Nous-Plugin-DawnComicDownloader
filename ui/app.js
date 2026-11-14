@@ -508,17 +508,23 @@
    * engine only writes the bytes back. Result is a PNG next to the numbering. */
   async function downloadDescrambled(file, dir, referer, page) {
     var path = dir + '\\' + file.name.replace(/\.(jpe?g|webp|png|avif)$/i, '.png');
-    var got = await Host.invoke('http.request', {
-      url: file.url,
-      method: 'GET',
-      binary: true,
-      headers: { 'User-Agent': E.UA, Referer: referer },
-      timeoutMs: 180000
-    });
-    var bytes = E.base64ToBytes(got.bodyBase64 || '');
-    if (!bytes.length) throw new Error('E_HTTP: 图片为空');
-    var mime = (got.headers && got.headers['content-type']) || 'image/jpeg';
-    var bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: mime.split(';')[0] }));
+    var pulled;
+    try {
+      pulled = await fetchImageBytes(file.url, referer);
+    } catch (err) {
+      throw new Error('取图失败（' + String(err && err.message ? err.message : err).slice(0, 100) +
+        '）。这一步要把页图从站点读进页面，若宿主限制结果体积，可先关掉“还原乱序页图”对比。');
+    }
+    var bytes = pulled.bytes;
+    if (!bytes.length) throw new Error('取图失败：图片为空');
+    var mime = pulled.mime || 'image/jpeg';
+
+    var bitmap;
+    try {
+      bitmap = await createImageBitmap(new Blob([new Uint8Array(bytes)], { type: mime.split(';')[0] }));
+    } catch (err) {
+      throw new Error('解码失败（' + bytes.length + ' 字节，' + mime.split(';')[0] + '）');
+    }
     var canvas = makeCanvas(bitmap.width, bitmap.height);
     var g = canvas.getContext('2d');
     E.jmScramblePlan(page.num, bitmap.height).forEach(function (band) {
@@ -527,10 +533,73 @@
     if (bitmap.close) bitmap.close();
     var blob = await canvasToBlob(canvas);
     var buffer = await blob.arrayBuffer();
-    await writeBytes(path, new Uint8Array(buffer));
+    try {
+      await writeBytes(path, new Uint8Array(buffer));
+    } catch (err) {
+      throw new Error('写盘失败（' + buffer.byteLength + ' 字节）：' + String(err && err.message ? err.message : err).slice(0, 90) +
+        '。可先关掉“还原乱序页图”再试：不还原时页图由模块直接落盘，不经过页面与宿主的大数据往返。');
+    }
     return { path: path, bytes: buffer.byteLength };
   }
 
+  /* The host caps a request at 1 MiB and a result at 4 MiB. A page image can be
+   * several megabytes, so big ones are pulled with Range requests: net.probe
+   * gives the size, then 1 MiB slices keep every result under the cap. When the
+   * size is unknown the slice that comes back short ends the stream. */
+  async function fetchImageBytes(url, referer) {
+    var headers = { 'User-Agent': E.currentUserAgent(), Referer: referer };
+    var size = 0;
+    try {
+      var probe = await Host.invoke('net.probe', { url: url, timeoutMs: 20000 });
+      size = (probe && probe.bytes) || 0;
+    } catch (err) { size = 0; }
+
+    if (size > 2 * 1024 * 1024) return rangeFetch(url, headers, size);
+
+    try {
+      var one = await Host.invoke('http.request', {
+        url: url, method: 'GET', binary: true, headers: headers, timeoutMs: 180000
+      });
+      return {
+        bytes: new Uint8Array(E.base64ToBytes(one.bodyBase64 || '')),
+        mime: (one.headers && one.headers['content-type']) || 'image/jpeg'
+      };
+    } catch (err) {
+      var msg = String(err && err.message ? err.message : err);
+      if (!/过大|too large|TOO_LARGE/i.test(msg)) throw err;
+      return rangeFetch(url, headers, 0);
+    }
+  }
+
+  async function rangeFetch(url, headers, size) {
+    var slice = 1024 * 1024;
+    var parts = [];
+    var got = 0;
+    for (;;) {
+      var to = size ? Math.min(got + slice, size) - 1 : got + slice - 1;
+      var r = await Host.invoke('http.request', {
+        url: url,
+        method: 'GET',
+        binary: true,
+        headers: Object.assign({ Range: 'bytes=' + got + '-' + to }, headers),
+        timeoutMs: 120000
+      });
+      if (r.status === 416) break;
+      var chunk = new Uint8Array(E.base64ToBytes(r.bodyBase64 || ''));
+      if (!chunk.length) break;
+      parts.push(chunk);
+      got += chunk.length;
+      if (size && got >= size) break;
+      if (!size && chunk.length < slice) break;
+      if (!size && got > 64 * 1024 * 1024) break;
+    }
+    if (!parts.length) throw new Error('E_HTTP: 分段取图为空');
+    var total = parts.reduce(function (n, p) { return n + p.length; }, 0);
+    var merged = new Uint8Array(total);
+    var at = 0;
+    parts.forEach(function (part) { merged.set(part, at); at += part.length; });
+    return { bytes: merged, mime: '' };
+  }
   /* The host rejects a single request over 1 MiB, and it counts the JSON as
    * UTF-16, so an ASCII base64 of 512 KiB already weighs 1 MiB. 128 KiB of
    * bytes (≈171 KiB of base64 ≈342 KiB UTF-16) stays well clear of the line
