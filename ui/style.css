@@ -10,6 +10,7 @@
 }
 
 :root {
+  color-scheme: light;
   --ink: #14120f;
   --paper: #f3efe7;
   --surface: #fbfaf7;
@@ -17,6 +18,7 @@
   --line-soft: #e8e2d8;
   --muted: #6f675c;
   --accent: #b93a22;
+  --accent-fill: #b93a22;
   --accent-soft: #f0d9d2;
   --sans: Archivo, "Noto Sans SC", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --r: 3px;
@@ -25,15 +27,21 @@
   --ease: cubic-bezier(.2, .7, .2, 1);
 }
 
+/* Dark is re-derived, not inverted: the ground turns warm charcoal, cards lift
+ * one step instead of dropping a shadow, ink keeps a warm tint, and the
+ * vermilion splits in two — a bright one for marks and text on charcoal, a
+ * deeper one for filled buttons that carry white text. */
 html[data-theme="dark"] {
-  --ink: #f0eae0;
-  --paper: #131211;
-  --surface: #1b1917;
-  --line: #302d29;
-  --line-soft: #262320;
-  --muted: #a0988c;
-  --accent: #e4643f;
-  --accent-soft: #3a221b;
+  color-scheme: dark;
+  --ink: #f2ede3;
+  --paper: #14110f;
+  --surface: #1c1917;
+  --line: #352f29;
+  --line-soft: #262220;
+  --muted: #a89f93;
+  --accent: #e8653f;
+  --accent-fill: #b8431f;
+  --accent-soft: #3a2018;
   --shadow: none;
 }
 
@@ -272,7 +280,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   transition: opacity .16s var(--ease), transform .16s var(--ease), background .16s var(--ease);
 }
 .card:hover .pick, .card[aria-selected="true"] .pick { opacity: 1; transform: none; }
-.card[aria-selected="true"] .pick { background: var(--accent); border-color: var(--accent); }
+.card[aria-selected="true"] .pick { background: var(--accent-fill); border-color: var(--accent-fill); }
 .pick svg { width: 12px; height: 12px; color: #fff; opacity: 0; transition: opacity .14s var(--ease); }
 .card[aria-selected="true"] .pick svg { opacity: 1; }
 
@@ -327,10 +335,10 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .start {
   height: 30px; padding: 0 12px; border: 0; border-radius: 2px;
-  background: var(--accent); color: #fff; font-size: 12.5px;
+  background: var(--accent-fill); color: #fff; font-size: 12.5px;
   transition: transform .16s var(--ease), background .16s var(--ease), opacity .16s var(--ease);
 }
-.start:hover:not(:disabled) { transform: translateY(-1px); background: color-mix(in srgb, var(--accent) 88%, #000); }
+.start:hover:not(:disabled) { transform: translateY(-1px); background: color-mix(in srgb, var(--accent-fill) 88%, #000); }
 .start:active:not(:disabled) { transform: translateY(1px); }
 .start:disabled { opacity: .35; cursor: default; }
 
@@ -381,6 +389,22 @@ button { font: inherit; color: inherit; cursor: pointer; }
   font-size: 11.5px; color: var(--muted);
 }
 .qfoot span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+
+.filters {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px;
+  margin: -4px 0 18px; padding-bottom: 12px;
+  border-bottom: 1px solid var(--line-soft);
+}
+.chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  height: 30px; padding: 0 9px; border: 0; border-radius: 2px;
+  background: none; color: var(--muted); font-size: 12.5px;
+  transition: color .16s var(--ease), background .16s var(--ease);
+}
+.chip:hover { color: var(--ink); background: var(--surface); }
+.chip[aria-pressed="true"] { color: var(--ink); }
+.chip[aria-pressed="true"] .cl { box-shadow: inset 0 -1.5px 0 var(--accent); }
+.chip .cn { font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
 .ghost {
   border: 1px solid var(--line); background: none; border-radius: 2px;

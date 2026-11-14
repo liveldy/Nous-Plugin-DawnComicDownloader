@@ -37,4 +37,10 @@ const pick = `<script>
 </script>
 `;
 await fs.writeFile(path.join(root, 'ui/preview-grid.html'), empty.replace('</body>', search + pick + '</body>'));
+
+const dark = results
+  .replace('<title>破晓漫画下载器 · preview</title>', '<title>破晓漫画下载器 · preview dark</title>')
+  .replace('<script src="demo-host.js"></script>', '<script>window.__DAWN_THEME = "dark";</script>\n<script src="demo-host.js"></script>')
+  .replace('</body>', pick + '</body>');
+await fs.writeFile(path.join(root, 'ui/preview-dark.html'), dark);
 console.log('wrote ui/preview.html, ui/preview-empty.html, ui/preview-grid.html');

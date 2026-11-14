@@ -84,7 +84,7 @@
   }
 
   window.__DAWN_DEMO__ = {
-    theme: (new URLSearchParams(location.search).get('theme') || 'light'),
+    theme: window.__DAWN_THEME || (new URLSearchParams(location.search).get('theme') || 'light'),
     invoke: async function (method, params) {
       params = params || {};
       if (method === 'image.proxy') return {dataUrl: coverFor(params.url), bytes: 1, mime: 'image/jpeg'};

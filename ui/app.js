@@ -76,6 +76,7 @@
     scanning: false,
     settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '' },
     disabled: {},
+    filter: null,
     counter: 1,
     coverCache: new Map(),
     coversInFlight: 0
@@ -163,6 +164,48 @@
     el.querySelector('.n').textContent = count ? String(count) : '';
   }
 
+  /* One line of source filters above the grid: the counts come from the last
+   * search, a click narrows the grid without asking any site again. */
+  function renderFilters() {
+    var bar = $('filters');
+    var results = (App.results && App.results.results) || [];
+    var total = App.items.length;
+    if (!total) { bar.hidden = true; bar.textContent = ''; return; }
+    bar.hidden = false;
+    bar.textContent = '';
+    var all = document.createElement('button');
+    all.type = 'button';
+    all.className = 'chip';
+    all.dataset.id = '';
+    all.setAttribute('aria-pressed', String(!App.filter));
+    all.innerHTML = '<span class="cl"></span><span class="cn"></span>';
+    all.querySelector('.cl').textContent = '全部';
+    all.querySelector('.cn').textContent = String(total);
+    all.addEventListener('click', function () { App.filter = null; renderFilters(); renderItems(true); });
+    bar.appendChild(all);
+    results.forEach(function (r) {
+      if (!r.items.length) return;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'chip';
+      b.dataset.id = r.id;
+      b.setAttribute('aria-pressed', String(App.filter === r.id));
+      b.innerHTML = '<span class="cl"></span><span class="cn"></span>';
+      b.querySelector('.cl').textContent = r.label;
+      b.querySelector('.cn').textContent = String(r.items.length);
+      b.addEventListener('click', function () {
+        App.filter = App.filter === r.id ? null : r.id;
+        renderFilters();
+        renderItems(true);
+      });
+      bar.appendChild(b);
+    });
+  }
+
+  function visibleItems() {
+    return App.filter ? App.items.filter(function (it) { return it.source === App.filter; }) : App.items;
+  }
+
   /* Before the first search the grid holds four quiet frames: the shape results
    * will take, no words needed. */
   function renderGhosts() {
@@ -200,8 +243,11 @@
   function renderItems(reset) {
     var grid = $('grid');
     if (reset) grid.textContent = '';
-    App.items.forEach(function (item, i) { grid.appendChild(makeCard(item, i)); });
+    var list = visibleItems();
+    list.forEach(function (item, i) { grid.appendChild(makeCard(item, i)); });
     document.documentElement.dataset.hasResults = App.items.length ? 'true' : 'false';
+    $('blank').hidden = !(App.items.length && !list.length);
+    if (App.items.length && !list.length) $('blank').textContent = '这个来源这次没有结果。';
   }
 
   function appendItems(list) {
@@ -331,8 +377,10 @@
         }
       });
       App.items = append ? App.items.concat(merged) : merged;
+      if (!append) App.filter = null;
       App.results = res;
       renderItems(!append);
+      renderFilters();
       if (append) appendItems(merged);
       var shown = App.items.length;
       $('tally').textContent = shown ? shown + (failed ? ' · ' + failed + ' 站未响应' : '') : '0';
@@ -361,6 +409,29 @@
     return root;
   }
 
+  /* CDN edges behind a filtered network drop a body now and then; one retry
+   * per page costs little and the module never leaves a half file behind. */
+  async function downloadPage(file, dir, referer) {
+    var path = dir + '\\' + file.name;
+    var last;
+    for (var attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await Host.invoke('http.download', {
+          url: file.url,
+          path: path,
+          headers: { 'User-Agent': E.UA, Referer: referer },
+          skipExisting: true,
+          timeoutMs: 180000
+        });
+      } catch (err) {
+        last = err;
+        await Host.invoke('fs.delete', { path: path + '.part' }).catch(function () {});
+        await new Promise(function (r) { setTimeout(r, 500 * (attempt + 1)); });
+      }
+    }
+    throw last;
+  }
+
   async function runQueue() {
     $('start').disabled = true;
     var rows = App.queue.filter(function (r) { return r.state === 'queued' || r.state === 'failed'; });
@@ -385,13 +456,7 @@
         await Host.invoke('fs.mkdirs', { path: plan.dir });
         for (var f = 0; f < plan.files.length; f++) {
           var file = plan.files[f];
-          await Host.invoke('http.download', {
-            url: file.url,
-            path: plan.dir + '\\' + file.name,
-            headers: { 'User-Agent': E.UA, Referer: row.item.url },
-            skipExisting: true,
-            timeoutMs: 120000
-          });
+          await downloadPage(file, plan.dir, row.item.url);
           row.done = f + 1;
           renderQueue();
         }
