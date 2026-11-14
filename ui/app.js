@@ -605,6 +605,18 @@
       var cards = spec.parseCards(spec.unwrap(search.body), base);
       lines.push('检索 "' + q + '" ' + search.status + '/' + search.body.length + 'B/' + cards.length + '条' +
         (spec.challengeCheck(search.body) ? '·质询' : ''));
+      if (cards.length) {
+        var first = cards[0];
+        var album = await ctx.get(first.url, { headers: E.baseHeaders(base + '/', true) });
+        var body = spec.unwrap(album.body);
+        var meta = E.parsers.jmAlbumMeta(body);
+        lines.push('本子 ' + first.id + ' ' + album.status + '/' + body.length + 'B · 章节 ' + meta.chapters.length +
+          ' · 页数 ' + (meta.count || 0) + ' · scramble ' + (meta.scrambleId || '—'));
+        if (!meta.chapters.length) {
+          var probe = /data-album|episode_|\/photo\/|series/i.test(body) ? '页面含章节标记但未匹配' : '页面不含章节标记';
+          lines.push(probe);
+        }
+      }
       var jar = await Host.invoke('cookie.list', {});
       var hosts = (jar && jar.hosts) || {};
       var named = Object.keys(hosts).map(function (h) {

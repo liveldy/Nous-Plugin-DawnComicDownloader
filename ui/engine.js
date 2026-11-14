@@ -643,10 +643,17 @@
       var count = /<span class="pagecount"[\s\S]{0,40}?:(\d+)<\/span>/.exec(html);
       var scramble = /var scramble_id = (\d+);/.exec(html);
       var chapters = [];
-      var rc = /href="(\/photo\/(\d+)\/?)"/g, mc;
-      while ((mc = rc.exec(html))) {
-        if (chapters.indexOf(mc[2]) < 0) chapters.push(mc[2]);
-      }
+      var push = function (id) { if (id && chapters.indexOf(id) < 0) chapters.push(id); };
+      var rc = /href="\/photo\/(\d+)\/?[^"]*"/g, mc;
+      while ((mc = rc.exec(html))) push(mc[1]);
+      var ra = /data-album="\d+"[^>]*?data-id="(\d+)"/g, ma;
+      while ((ma = ra.exec(html))) push(ma[1]);
+      var rb = /data-album="\d+"[^>]*?href="[^"]*?\/photo\/(\d+)/g, mb;
+      while ((mb = rb.exec(html))) push(mb[1]);
+      var re2 = /id="episode_(\d+)"/g, me;
+      while ((me = re2.exec(html))) push(me[1]);
+      var rp = /\/photo\/(\d+)/g, mp;
+      while ((mp = rp.exec(html))) push(mp[1]);
       return {
         title: name ? collapse(stripTags(name[1])) : '',
         cover: cover ? absolute(jm.base, cover[1]) : '',
@@ -667,7 +674,7 @@
         jm.assertUsable(res, html, '本子详情');
         var meta = jm.albumMeta(html);
         var albumImages = jm.pageUrls(html, base);
-        var chapters = meta.chapters.length ? meta.chapters : [aid];
+        var chapters = meta.chapters.slice();
         var queue = chapters.slice(0, 20);
         var pages = [];
         var chain = Promise.resolve();
@@ -685,6 +692,9 @@
           });
         });
         return chain.then(function () {
+          if (!pages.length && !chapters.length) {
+            throw new Error('E_PARSE: 本子 ' + aid + ' 的页面里没有章节链接（可能需登录或结构变化；页数 ' + (meta.count || 0) + '）');
+          }
           if (!pages.length && albumImages.length) {
             albumImages.forEach(function (url) {
               var file = url.split('/').pop().split('?')[0];
