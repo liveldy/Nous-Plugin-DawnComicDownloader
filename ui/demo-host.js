@@ -109,6 +109,13 @@
       }
       if (method === 'storage.set') return {ok: true};
       if (method === 'fs.allowRoot' || method === 'fs.mkdirs') return {path: params.path, created: false};
+      if (method === 'system.chooseFolder') return {path: undefined};
+      if (method === 'fs.list') {
+        var base = (params.path || 'C:\\').replace(/[\\/]+$/, '');
+        return {path: base, entries: ['Manga', 'Downloads', 'Pictures', 'Temp'].map(function (n) {
+          return {name: n, path: base + '\\' + n, dir: true, bytes: 0, mtime: 0};
+        })};
+      }
       if (method === 'http.download') return {path: params.path, bytes: 1024, sha256: '', status: 200, skipped: false};
       if (method === 'system.openFolder') return {opened: true};
       if (method === 'cookie.set') return {ok: true};

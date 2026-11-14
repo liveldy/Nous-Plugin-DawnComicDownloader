@@ -77,13 +77,34 @@
 <section class="wrap panel" id="settings" hidden>
   <h2>设置</h2>
   <form class="fields" id="fields">
-    <label>下载目录 <input name="root" type="text" placeholder="D:\Manga" spellcheck="false"></label>
-    <label>编号位数 <input name="width" type="number" min="2" max="5" step="1" value="3"></label>
-    <label>起始编号 <input name="start" type="number" min="1" max="99999" step="1" value="1"></label>
-    <label>SauceNAO API Key <input name="sauce" type="text" placeholder="可选" spellcheck="false"></label>
-    <label>禁漫域名 <input name="jmDomain" type="text" placeholder="18comic.vip" spellcheck="false"></label>
-    <label>禁漫 Cookie <input name="jmCookie" type="text" placeholder="cf_clearance=..." spellcheck="false"></label>
-    <div class="inline">
+    <div class="field">
+      <label for="rootInput">下载目录</label>
+      <div class="inline">
+        <input id="rootInput" name="root" type="text" placeholder="D:\Manga" spellcheck="false">
+        <button class="ghost-btn" type="button" id="browseRoot">浏览…</button>
+      </div>
+    </div>
+    <div class="field">
+      <label for="widthInput">编号位数</label>
+      <input id="widthInput" name="width" type="number" min="2" max="5" step="1" value="3">
+    </div>
+    <div class="field">
+      <label for="startInput">起始编号</label>
+      <input id="startInput" name="start" type="number" min="1" max="99999" step="1" value="1">
+    </div>
+    <div class="field">
+      <label for="sauceInput">SauceNAO API Key</label>
+      <input id="sauceInput" name="sauce" type="text" placeholder="可选" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="jmDomainInput">禁漫域名</label>
+      <input id="jmDomainInput" name="jmDomain" type="text" placeholder="18comic.vip" spellcheck="false">
+    </div>
+    <div class="field">
+      <label for="jmCookieInput">禁漫 Cookie</label>
+      <input id="jmCookieInput" name="jmCookie" type="text" placeholder="cf_clearance=..." spellcheck="false">
+    </div>
+    <div class="inline span">
       <button class="ghost-btn" type="button" id="jmLogin">过 Cloudflare 校验</button>
       <span class="jmstatus" id="jmStatus" aria-live="polite"></span>
     </div>
@@ -92,6 +113,22 @@
     <span class="saved" id="saved" aria-live="polite"></span>
   </form>
 </section>
+
+<div class="picker" id="picker" hidden role="dialog" aria-modal="true" aria-label="选择下载目录">
+  <div class="picker-box">
+    <div class="picker-head">
+      <input id="pickerPath" type="text" spellcheck="false" aria-label="当前路径">
+    </div>
+    <ul class="picker-list" id="pickerList"></ul>
+    <div class="picker-foot">
+      <button class="ghost-btn" id="pickerUp" type="button">上一级</button>
+      <button class="ghost-btn" id="pickerNew" type="button">新建文件夹</button>
+      <span class="picker-gap"></span>
+      <button class="ghost-btn" id="pickerCancel" type="button">取消</button>
+      <button class="save" id="pickerOk" type="button">用这个目录</button>
+    </div>
+  </div>
+</div>
 
 <script>window.__DAWN_THEME = "dark";</script>
 <script src="demo-host.js"></script>

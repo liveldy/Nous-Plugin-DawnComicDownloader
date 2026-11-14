@@ -30,7 +30,7 @@ DIST_ROOT = PLUGIN_ROOT / "dist"
 
 JAVA_RELEASE = "17"
 ENTRY_CLASS = "app.dawncomic.PluginMain"
-MODULES = ["java.base", "java.logging", "java.net.http", "jdk.crypto.ec", "jdk.zipfs"]
+MODULES = ["java.base", "java.logging", "java.net.http", "jdk.crypto.ec", "jdk.zipfs", "java.desktop"]
 
 # Reproducible packaging: every archive entry gets a fixed timestamp so the manifest's
 # pinned sha256 survives a rebuild on the same JDK. Bump these only on purpose.

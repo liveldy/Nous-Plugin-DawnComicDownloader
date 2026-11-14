@@ -32,8 +32,16 @@
     });
     window.NousPlugin.on('navigation.changed', function (view) { App.setView(view); });
     return {
-      invoke: function (method, params) {
-        return window.NousPlugin.request('runtime.invoke', { method: method, params: params || {} }, { timeoutMs: 120000 });
+      invoke: async function (method, params) {
+        try {
+          return await window.NousPlugin.request('runtime.invoke', { method: method, params: params || {} }, { timeoutMs: 180000 });
+        } catch (err) {
+          var msg = String(err && err.message ? err.message : err);
+          if (/E_UNSUPPORTED/.test(msg)) {
+            throw new Error('E_MODULE: 运行模块不支持 ' + method + '（模块 ' + (App.engineVersion || '未知') + '）。插件页需要 1.0.4 及以上模块，请在插件管理里重装一次以更新模块。');
+          }
+          throw err;
+        }
       },
       plugin: ctx
     };
@@ -554,6 +562,97 @@
     }
   }
 
+  /* ---------------------------------------------------------- folder picker */
+
+  /* First choice is the winget-native dialog inside the module (system.chooseFolder).
+   * When the module predates it, or the session has no desktop, the page falls back
+   * to its own browser built on fs.list — same result, one request per folder. */
+  var Picker = {
+    path: '',
+    async open(start) {
+      var from = start || App.settings.root || 'C:\\';
+      try {
+        var res = await Host.invoke('system.chooseFolder', { title: '选择下载目录', path: from });
+        if (res && res.path) { commitRoot(res.path); return; }
+        if (res && res.path === null) return; // user cancelled the native dialog
+      } catch (err) {
+        var msg = String(err && err.message ? err.message : err);
+        if (!/E_UNSUPPORTED|E_MODULE|E_IO/.test(msg)) throw err;
+      }
+      Picker.path = from;
+      $('pickerPath').value = from;
+      $('picker').hidden = false;
+      await Picker.list();
+    },
+    async list() {
+      var list = $('pickerList');
+      list.textContent = '';
+      try {
+        var res = await Host.invoke('fs.list', { path: Picker.path });
+        var dirs = (res.entries || []).filter(function (e) { return e.dir; })
+          .sort(function (a, b) { return a.name.localeCompare(b.name); });
+        if (!dirs.length) {
+          var empty = document.createElement('li');
+          empty.className = 'empty';
+          empty.textContent = '这里没有子目录';
+          list.appendChild(empty);
+        }
+        dirs.forEach(function (e) {
+          var li = document.createElement('li');
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.textContent = e.name;
+          b.addEventListener('click', function () {
+            Picker.path = e.path;
+            $('pickerPath').value = e.path;
+            Picker.list();
+          });
+          li.appendChild(b);
+          list.appendChild(li);
+        });
+      } catch (err) {
+        var li = document.createElement('li');
+        li.className = 'empty';
+        li.textContent = String(err && err.message ? err.message : err).slice(0, 90);
+        list.appendChild(li);
+      }
+    },
+    up() {
+      var p = Picker.path.replace(/[\\/]+$/, '');
+      var i = p.lastIndexOf('\\');
+      if (i <= 0) return;
+      var next = p.slice(0, i);
+      Picker.path = /^[A-Za-z]:$/.test(next) ? next + '\\' : next;
+      $('pickerPath').value = Picker.path;
+      Picker.list();
+    },
+    async create() {
+      var base = Picker.path.replace(/[\\/]+$/, '');
+      var n = 0, name;
+      for (;;) {
+        name = n ? '新建文件夹 ' + n : '新建文件夹';
+        try {
+          await Host.invoke('fs.mkdirs', { path: base + '\\' + name });
+          break;
+        } catch (err) {
+          if (++n > 40) return;
+        }
+      }
+      Picker.path = base + '\\' + name;
+      $('pickerPath').value = Picker.path;
+      Picker.list();
+    }
+  };
+
+  function commitRoot(path) {
+    App.settings.root = path;
+    var form = $('fields');
+    if (form) form.root.value = path;
+    Host.invoke('fs.allowRoot', { path: path }).catch(function () {});
+    saveSettings();
+    renderQueue();
+  }
+
   async function runQueue() {
     $('start').disabled = true;
     var rows = App.queue.filter(function (r) { return r.state === 'queued' || r.state === 'failed'; });
@@ -703,6 +802,18 @@
     $('openroot').addEventListener('click', function () {
       if (App.settings.root) Host.invoke('system.openFolder', { path: App.settings.root }).catch(function () {});
     });
+    $('browseRoot').addEventListener('click', function () { Picker.open($('fields').root.value.trim()); });
+    $('pickerUp').addEventListener('click', function () { Picker.up(); });
+    $('pickerNew').addEventListener('click', function () { Picker.create(); });
+    $('pickerCancel').addEventListener('click', function () { $('picker').hidden = true; });
+    $('pickerOk').addEventListener('click', function () {
+      commitRoot($('pickerPath').value.trim() || Picker.path);
+      $('picker').hidden = true;
+    });
+    $('pickerPath').addEventListener('change', function () {
+      Picker.path = $('pickerPath').value.trim();
+      Picker.list();
+    });
     if ($('jmLogin')) {
       if (window.NousPlugin) $('jmLogin').addEventListener('click', passChallenge);
       else $('jmLogin').hidden = true;
@@ -745,6 +856,10 @@
       await Host.ready;
       await loadState();
       renderQueue();
+      try {
+        var info = await Host.invoke('engine.info', {});
+        App.engineVersion = info && info.version ? info.version : '';
+      } catch (e) { App.engineVersion = ''; }
       var view = (await Host.ready).plugin && (await Host.ready).plugin.view;
       setView(view || 'search');
     } catch (e) {

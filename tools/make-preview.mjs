@@ -52,4 +52,14 @@ const nav = `<script>
 const settings = empty.replace('</body>', nav + '</body>')
   .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview settings</title>');
 await fs.writeFile(path.join(root, 'ui/preview-settings.html'), settings);
+
+const picker = `<script>
+  // design review: the folder browser the page falls back to
+  setTimeout(function () { if (window.__DAWN_NAV__) window.__DAWN_NAV__('settings'); }, 400);
+  setTimeout(function () { document.getElementById('browseRoot').click(); }, 900);
+</script>
+`;
+await fs.writeFile(path.join(root, 'ui/preview-picker.html'),
+  empty.replace('</body>', picker + '</body>')
+    .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview picker</title>'));
 console.log('wrote ui/preview.html, ui/preview-empty.html, ui/preview-grid.html');
