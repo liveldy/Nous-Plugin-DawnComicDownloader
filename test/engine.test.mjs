@@ -14,9 +14,9 @@ const engine = require('../ui/engine.js');
 const here = path.dirname(fileURLToPath(import.meta.url));
 const fixture = name => readFile(path.join(here, 'fixtures', name), 'utf8');
 
-test('six sources are registered with their capability flags', () => {
+test('seven sources are registered with their capability flags', () => {
   const info = engine.sourceInfo();
-  assert.deepEqual(info.map(s => s.id), ['niacg', 'ahri', 'jm', 'hentaileague', 'rule34us', 'r34video']);
+  assert.deepEqual(info.map(s => s.id), ['niacg', 'ahri', 'jm', 'pixiv', 'hentaileague', 'rule34us', 'r34video']);
   const byId = Object.fromEntries(info.map(s => [s.id, s]));
   assert.equal(byId.niacg.caps.text, true);
   assert.equal(byId.ahri.caps.text, true, 'ahri-gallery searches through search_key');
@@ -270,4 +270,57 @@ test('ahri search uses the site\'s own search_key parameter', async () => {
   assert.equal(res.items.length, 1);
   assert.equal(res.items[0].id, '1399923');
   assert.equal(res.items[0].title, '[alun]2026年短篇合集');
+});
+/* ---- Pixiv ------------------------------------------------------------- */
+
+test('pixiv search maps the json the site returns', async () => {
+  const spec = engine.getSource('pixiv');
+  const raw = await fixture('pixiv-search.json');
+  let seen = '';
+  const ctx = { get: async (url) => { seen = url; return {status: 200, body: raw, headers: {}}; } };
+  const res = await spec.search(ctx, 'test', 2);
+  assert.match(seen, /\/ajax\/search\/artworks\/test/);
+  assert.match(seen, /[?&]p=2\b/);
+  assert.ok(res.items.length > 0);
+  const first = res.items[0];
+  assert.match(first.id, /^\d+$/);
+  assert.equal(first.url, 'https://www.pixiv.net/artworks/' + first.id);
+  assert.ok(first.title.length > 0);
+  assert.ok(first.author.length > 0);
+  assert.match(first.cover, /^https:\/\/i\.pximg\.net\//);
+  assert.equal(res.hasMore, true, 'lastPage 10 and page 2 means more');
+});
+
+test('pixiv detail returns original pages and tag list', async () => {
+  const spec = engine.getSource('pixiv');
+  const detailJson = await fixture('pixiv-illust.json');
+  const pagesJson = await fixture('pixiv-pages.json');
+  const ctx = {
+    get: async (url) => ({
+      status: 200,
+      body: /\/pages$/.test(url) ? pagesJson : detailJson,
+      headers: {}
+    })
+  };
+  const out = await spec.detail(ctx, {id: '152052516', title: 'x'});
+  assert.ok(out.pages.length >= 1);
+  assert.match(out.pages[0].url, /^https:\/\/i\.pximg\.net\/img-original\//);
+  assert.ok(out.meta.title.length > 0);
+  assert.ok(out.meta.tags.length > 0);
+  assert.equal(out.count, out.pages.length);
+});
+
+test('pixiv reports a locked work instead of an empty album', async () => {
+  const spec = engine.getSource('pixiv');
+  const ctx = { get: async () => ({status: 200, body: '{"error":true,"message":"","body":[]}', headers: {}}) };
+  await assert.rejects(spec.detail(ctx, {id: '1', title: 'x'}), /E_AUTH/);
+});
+
+test('pixiv drops ugoira items, which are frame archives rather than pages', () => {
+  const items = engine.parsers.pixivItems([
+    {id: '1', title: 'still', illustType: 0, pageCount: 2, url: 'https://i.pximg.net/a.jpg'},
+    {id: '2', title: 'anim', illustType: 2, pageCount: 1, url: 'https://i.pximg.net/b.jpg'}
+  ], 'https://www.pixiv.net');
+  assert.equal(items.length, 1);
+  assert.equal(items[0].id, '1');
 });

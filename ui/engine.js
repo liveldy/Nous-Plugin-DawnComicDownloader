@@ -779,6 +779,107 @@
     }
   };
 
+  /* ------------------------------------------------------------------ Pixiv */
+
+  /* The web endpoints Pixiv's own front end calls, not the app API: no OAuth,
+   * no refresh token. Search and detail answer without a session; the image
+   * host (i.pximg.net) refuses requests whose Referer is not pixiv.net, so both
+   * the cover proxy and the downloader send the artwork page as Referer.
+   * R-18 works answer {"error":true} until a session cookie is supplied. */
+
+  var pixiv = {
+    id: 'pixiv',
+    label: 'Pixiv',
+    host: 'www.pixiv.net',
+    base: 'https://www.pixiv.net',
+    kind: 'gallery',
+    caps: { text: true, browse: true, tag: true, image: false },
+    challenge: false,
+    note: '检索 /ajax/search/artworks，详情 /ajax/illust/{id}/pages；图片在 i.pximg.net，需 Referer pixiv.net（插件已带）。R-18 作品未登录时会被拒绝。',
+
+    headers: function () {
+      var h = baseHeaders(pixiv.base + '/', true);
+      h.Accept = 'application/json';
+      return h;
+    },
+
+    parse: function (list, base) {
+      var out = [];
+      (list || []).forEach(function (it) {
+        if (!it || !it.id) return;
+        if (String(it.illustType) === '2') return; // ugoira: a zip of frames, not a still page
+        out.push({
+          id: String(it.id),
+          url: base + '/artworks/' + it.id,
+          title: collapse(it.title || ''),
+          cover: it.url || it.profileImageUrl || '',
+          author: collapse(it.userName || ''),
+          tags: (it.tags || []).slice(0, 8),
+          extra: { count: it.pageCount || it.illust_page_count || 0, type: it.illustType, restrict: it.xRestrict }
+        });
+      });
+      return dedupe(out);
+    },
+
+    search: function (ctx, query, page) {
+      var p = Math.max(1, page || 1);
+      var q = collapse(query);
+      if (!q) return pixiv.browse(ctx, p);
+      var url = pixiv.base + '/ajax/search/artworks/' + encodeURIComponent(q) + '?' + qs({
+        word: q, p: p, lang: 'zh', s_mode: 's_tag', order: 'date_d'
+      });
+      return ctx.get(url, { headers: pixiv.headers() }).then(function (res) {
+        var json;
+        try { json = JSON.parse(res.body); } catch (e) { throw new Error('E_PARSE: Pixiv 返回非 JSON（HTTP ' + res.status + '）'); }
+        if (json.error) throw new Error('E_AUTH: Pixiv 拒绝了该检索（HTTP ' + res.status + '）：' + (json.message || '需要登录或该词无结果'));
+        var body = json.body || {};
+        var block = body.illustManga || body.illust || {};
+        var items = pixiv.parse(block.data || [], pixiv.base);
+        return { items: items, hasMore: (block.lastPage || 1) > p };
+      });
+    },
+
+    browse: function (ctx, page) {
+      var p = Math.max(1, page || 1);
+      return ctx.get(pixiv.base + '/ranking.php?' + qs({ mode: 'daily', format: 'json', p: p }), { headers: pixiv.headers() }).then(function (res) {
+        var json;
+        try { json = JSON.parse(res.body); } catch (e) { throw new Error('E_PARSE: Pixiv 排行榜返回非 JSON（HTTP ' + res.status + '）'); }
+        var items = pixiv.parse((json.contents || []).map(function (it) {
+          return {
+            id: it.illust_id, title: it.title, url: it.url,
+            userName: it.user_name, pageCount: parseInt(it.illust_page_count, 10) || 0,
+            illustType: it.illust_type, tags: (it.tags || []).slice(0, 8)
+          };
+        }), pixiv.base);
+        return { items: items, hasMore: !!json.next };
+      });
+    },
+
+    detail: function (ctx, item) {
+      var id = String(item.id || '');
+      return ctx.get(pixiv.base + '/ajax/illust/' + id, { headers: pixiv.headers() }).then(function (res) {
+        var json;
+        try { json = JSON.parse(res.body); } catch (e) { throw new Error('E_PARSE: Pixiv 详情返回非 JSON（HTTP ' + res.status + '）'); }
+        if (json.error) throw new Error('E_AUTH: 作品 ' + id + ' 需要登录（可能需要 Cookie 才能看 R-18 原图）');
+        var body = json.body || {};
+        return ctx.get(pixiv.base + '/ajax/illust/' + id + '/pages', { headers: pixiv.headers() }).then(function (r2) {
+          var pagesJson;
+          try { pagesJson = JSON.parse(r2.body); } catch (e) { throw new Error('E_PARSE: Pixiv 页面列表返回非 JSON（HTTP ' + r2.status + '）'); }
+          if (pagesJson.error) throw new Error('E_AUTH: 作品 ' + id + ' 的页面需要登录');
+          var pages = (pagesJson.body || []).map(function (p) {
+            return { url: (p.urls && (p.urls.original || p.urls.regular)) || '' };
+          }).filter(function (p) { return p.url; });
+          if (!pages.length) throw new Error('E_PARSE: 作品 ' + id + ' 没有可用页面');
+          var tags = ((body.tags && body.tags.tags) || []).map(function (t) { return t.tag; });
+          return {
+            meta: { title: collapse(body.illustTitle || item.title), author: collapse(body.userName || ''), tags: tags.slice(0, 10) },
+            pages: pages,
+            count: body.pageCount || pages.length
+          };
+        });
+      });
+    }
+  };
   /* ----------------------------------------------------------- HentaiLeague */
 
   var hentaileague = {
@@ -1011,7 +1112,7 @@
     return String(q || '').toLowerCase().split(/[\s,，、]+/).filter(function (t) { return t.length > 1; });
   }
 
-  var SOURCES = [niacg, ahri, jm, hentaileague, rule34us, r34video];
+  var SOURCES = [niacg, ahri, jm, pixiv, hentaileague, rule34us, r34video];
 
   function getSource(id) {
     for (var i = 0; i < SOURCES.length; i++) if (SOURCES[i].id === id) return SOURCES[i];
@@ -1052,6 +1153,7 @@
     var ids = opts.sources && opts.sources.length ? opts.sources : SOURCES.map(function (s) { return s.id; });
     var query = collapse(opts.query);
     var page = opts.page || 1;
+    var limit = Math.max(0, parseInt(opts.limit, 10) || 0);
     var jobs = ids.map(function (id) {
       var spec = getSource(id);
       if (!spec) return Promise.resolve({ id: id, items: [], error: 'E_SOURCE: 未知来源' });
@@ -1060,6 +1162,7 @@
         .then(function () { return call; })
         .then(function (res) {
           var items = (res.items || []).map(function (it) { return normalize(spec, it); });
+          if (limit) items = items.slice(0, limit);
           return { id: id, label: spec.label, items: items, hasMore: !!res.hasMore, note: res.note || '' };
         })
         .catch(function (err) {
@@ -1275,7 +1378,8 @@
       jmPageUrls: jm.pageUrls,
       hlPosts: hentaileague.parsePosts,
       rule34Cards: rule34us.parseCards,
-      r34videoCards: r34video.parseCards
+      r34videoCards: r34video.parseCards,
+      pixivItems: pixiv.parse
     }
   };
 });

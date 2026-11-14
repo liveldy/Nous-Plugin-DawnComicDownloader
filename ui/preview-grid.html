@@ -37,6 +37,14 @@
   </div>
 </header>
 
+<section class="wrap imgbar" id="panel" hidden>
+  <form class="drop" id="drop">
+    <input id="file" type="file" accept="image/*" hidden>
+    <button class="pickfile" type="button" id="pickfile">选择图片</button>
+    <span class="hint" id="hint">SauceNAO 有 key 时优先，无 key 走 IQDB</span>
+  </form>
+  <div class="matches" id="matches"></div>
+</section>
 <main class="wrap shell">
   <section class="results" id="results" tabindex="-1">
     <div class="filters" id="filters" hidden></div>
@@ -65,15 +73,6 @@
   <div class="sites" id="sites"></div>
 </section>
 
-<section class="wrap panel" id="panel" hidden>
-  <h2>图片检索</h2>
-  <form class="drop" id="drop">
-    <input id="file" type="file" accept="image/*" hidden>
-    <button class="pickfile" type="button" id="pickfile">选择图片</button>
-    <span class="hint" id="hint">SauceNAO 有 key 时优先，无 key 走 IQDB</span>
-  </form>
-  <div class="matches" id="matches"></div>
-</section>
 
 <section class="wrap panel" id="settings" hidden>
   <h2>设置</h2>
@@ -92,6 +91,10 @@
     <div class="field">
       <label for="startInput">起始编号</label>
       <input id="startInput" name="start" type="number" min="1" max="99999" step="1" value="1">
+    </div>
+    <div class="field">
+      <label for="perSourceInput">每源条数</label>
+      <input id="perSourceInput" name="perSource" type="number" min="4" max="60" step="1" value="20">
     </div>
     <div class="field">
       <label for="sauceInput">SauceNAO API Key</label>

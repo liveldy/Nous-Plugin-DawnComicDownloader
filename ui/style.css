@@ -159,7 +159,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .sites-wrap { padding-block: 0 26px; }
 
 .sites {
-  display: grid; grid-template-columns: repeat(6, minmax(0, 1fr));
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(148px, 1fr));
   gap: 1px; background: var(--line);
   border: 1px solid var(--line); border-radius: var(--r); overflow: hidden;
 }
@@ -425,6 +425,20 @@ button { font: inherit; color: inherit; cursor: pointer; }
 }
 .ghost:hover { transform: translateY(-1px); border-color: var(--ink); }
 
+/* ----------------------------------------------------------- image bar */
+
+.imgbar {
+  padding-block: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.imgbar .drop {
+  padding: 12px 14px;
+  border-style: solid;
+  border-color: var(--line);
+}
+.imgbar .matches { margin-top: 12px; }
+.imgbar .match { background: var(--surface); }
+
 /* -------------------------------------------------------------- panels */
 
 .panel {
@@ -435,7 +449,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
 
 .drop {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 20px; border: 1px dashed var(--line);
+  padding: 16px; border: 1px dashed var(--line);
   border-radius: var(--r); background: var(--surface);
 }
 .pickfile {
@@ -570,7 +584,7 @@ button { font: inherit; color: inherit; cursor: pointer; }
   .shell { grid-template-columns: minmax(0, 1fr); }
   .queue { position: static; }
   .qlist { max-height: none; }
-  .sites { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .sites { grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); }
 }
 
 @media (max-width: 720px) {

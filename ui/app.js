@@ -99,7 +99,7 @@
     results: {},
     queue: [],
     scanning: false,
-    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '' },
+    settings: { root: '', sauce: '', width: 3, start: 1, jmCookie: '', jmDomain: '18comic.vip', jmDescramble: true, ua: '', perSource: 20 },
     disabled: {},
     filter: null,
     kind: null,
@@ -108,7 +108,7 @@
     coversInFlight: 0
   };
 
-  var COVER_CONCURRENCY = 4;
+  var COVER_CONCURRENCY = 6;
   var COVER_QUEUE = [];
 
   /* ------------------------------------------------------------ storage */
@@ -325,8 +325,29 @@
       img.classList.add('is-in');
       return;
     }
-    COVER_QUEUE.push({ url: url, img: img, referer: referer || '' });
-    pumpCovers();
+    var job = { url: url, img: img, referer: referer || '' };
+    /* Covers are the slowest part of a search: ask for one only when its card is
+     * near the viewport. */
+    if (typeof IntersectionObserver === 'undefined') {
+      COVER_QUEUE.push(job);
+      pumpCovers();
+      return;
+    }
+    if (!App.coverObserver) {
+      App.coverObserver = new IntersectionObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (!entry.isIntersecting) return;
+          App.coverObserver.unobserve(entry.target);
+          var pending = entry.target.__coverJob;
+          if (pending) {
+            COVER_QUEUE.push(pending);
+            pumpCovers();
+          }
+        });
+      }, { rootMargin: '400px 0px' });
+    }
+    img.__coverJob = job;
+    App.coverObserver.observe(img);
   }
 
   /* Some CDNs answer image requests only with a Referer, and some answer with
@@ -454,7 +475,10 @@
     $('tally').textContent = '检索中';
 
     try {
-      var res = await E.searchAll(ctx, { query: query, sources: active, page: page || 1 });
+      var res = await E.searchAll(ctx, {
+        query: query, sources: active, page: page || 1,
+        limit: Math.max(1, parseInt(App.settings.perSource, 10) || 20)
+      });
       App.page = page || 1;
       var merged = [];
       var failed = 0;
@@ -928,6 +952,7 @@
     form.jmDomain.value = App.settings.jmDomain || '18comic.vip';
     form.jmDescramble.checked = App.settings.jmDescramble !== false;
     form.ua.value = App.settings.ua || '';
+    form.perSource.value = String(App.settings.perSource || 20);
   }
 
   function setView(view) {
@@ -991,6 +1016,7 @@
       App.settings.jmDescramble = form.jmDescramble.checked;
       App.settings.ua = form.ua.value.trim();
       E.setUserAgent(App.settings.ua);
+      App.settings.perSource = Math.min(60, Math.max(4, parseInt(form.perSource.value, 10) || 20));
       var start = Math.max(1, parseInt(form.start.value, 10) || 1);
       App.counter = start;
       await saveSettings();

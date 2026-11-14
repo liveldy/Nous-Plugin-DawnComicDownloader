@@ -156,3 +156,19 @@ KVS（Kernel Video Sharing）。**验证**。
 **没有移植**：`JmApiClient`（App 接口）。它需要 `APP_TOKEN_SECRET` / `APP_DATA_SECRET` 两个硬编码密钥、`token/tokenparam` 头、`APP_VERSION` 跟随，以及 AES-ECB 解密响应（`JmCryptoTool.decode_resp_data`）。这和 HTML 客户端拿到的内容相同，却把插件绑在会变的应用版本和密钥上；沙箱页面也没有同步 AES-ECB。需要时再按 `client: api` 另开分支。
 
 **验证状态**：本机对 18comic 全站只能拿到 Cloudflare 质询页（HTTP 403），上述解析与还原逻辑因此只做到“结构与算法对齐 + 单测锁住”，没有真实页面回放。已在单测里锁住：md5 向量、5 组 `get_num` 参考值（与 Python 计算一致）、分段计划不重叠且覆盖整幅、base64 包裹页展开、页图顺序与 `blank.gif` 过滤。首次在能过质询的环境里跑通后，应把真实回包加入 `test/fixtures/`。
+
+## 6. Pixiv
+
+没有找到“现成且能直接嵌进插件”的实现，所以按网页前端自己的 ajax 端点写。参考的公开项目是 [upbit/pixivpy](https://github.com/upbit/pixivpy)（MIT）与 [gallery-dl](https://github.com/mikf/gallery-dl)，它们走的是 **App API + OAuth**（client_id/client_secret + refresh_token）；插件里没有存放这类密钥的位置，也承受不起令牌轮换，因此改走未登录可用的网页端点：
+
+| 用途 | 请求 | 说明 |
+| --- | --- | --- |
+| 检索 | `GET /ajax/search/artworks/{词}?word=&p=&lang=zh&s_mode=s_tag&order=date_d` | `body.illustManga.data[]`：id / title / url / userName / pageCount / tags / xRestrict / illustType；`lastPage` 判翻页 |
+| 浏览 | `GET /ranking.php?mode=daily&format=json&p=N` | `contents[]`：illust_id / title / url / user_name / illust_page_count |
+| 详情 | `GET /ajax/illust/{id}` | illustTitle、userName、pageCount、tags.tags[]、xRestrict |
+| 页列表 | `GET /ajax/illust/{id}/pages` | `body[].urls.original`（回退 regular） |
+| 图片 | `https://i.pximg.net/...` | **必须带 `Referer: https://www.pixiv.net/`**，否则 403；封面与下载都由插件自动带上 |
+
+实测（2026-11-14，未登录）：检索 test 返回 75,270 条 / 10 页；`/ajax/illust/152052516` 与 `/pages` 均 200；带 pixiv Referer 取原图 200、不带 403。
+
+边界：xRestrict=1（R-18）未登录时详情返回 `{"error":true}`，插件报 `E_AUTH` 并说明需要 Cookie，而不是静默 0 条；illustType=2（动图 ugoira）是帧压缩包而非静态页，列表阶段即过滤。

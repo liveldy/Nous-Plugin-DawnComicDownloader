@@ -59,6 +59,18 @@ const picker = `<script>
   setTimeout(function () { document.getElementById('browseRoot').click(); }, 900);
 </script>
 `;
+const imageMode = `<script>
+  // design review: the image-search bar, now under the search field
+  setTimeout(function () {
+    var b = document.querySelector('.mode[data-mode="image"]');
+    if (b) b.click();
+  }, 500);
+</script>
+`;
+await fs.writeFile(path.join(root, 'ui/preview-image.html'),
+  empty.replace('</body>', imageMode + '</body>')
+    .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview image</title>'));
+
 await fs.writeFile(path.join(root, 'ui/preview-picker.html'),
   empty.replace('</body>', picker + '</body>')
     .replace('<title>破晓漫画下载器 · preview empty</title>', '<title>破晓漫画下载器 · preview picker</title>'));
