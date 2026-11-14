@@ -196,14 +196,25 @@
 
     search: function (ctx, query, page) {
       if (!query) return this.browse(ctx, page);
+      var p = Math.max(1, page || 1);
+      /* The POST answers with a redirect to /e/search/result/?searchid=…; that
+       * URL is the one that paginates (?page=N), so it is reused for later pages. */
+      var cached = niacg.lastQuery === query ? niacg.lastUrl : '';
+      if (p > 1 && cached) {
+        return ctx.get(cached + '&page=' + p, { headers: baseHeaders(niacg.base + '/') }).then(function (res) {
+          var items = niacg.parseCards(res.body || '');
+          return { items: items, hasMore: items.length > 0 };
+        });
+      }
       var body = form({ keyboard: query, show: 'title', tempid: '1', tbname: 'news', Submit: '搜索' });
       return ctx.post(niacg.base + '/e/search/index.php', body, {
         headers: baseHeaders(niacg.base + '/'),
         contentType: 'application/x-www-form-urlencoded'
       }).then(function (res) {
+        niacg.lastQuery = query;
+        niacg.lastUrl = res.url && /searchid=/.test(res.url) ? res.url : '';
         var html = res.body || '';
-        var items = niacg.parseCards(html);
-        return { items: items, hasMore: false, raw: 'search' };
+        return { items: niacg.parseCards(html), hasMore: true };
       });
     },
 
@@ -1156,8 +1167,10 @@
     var limit = Math.max(0, parseInt(opts.limit, 10) || 0);
     var jobs = ids.map(function (id) {
       var spec = getSource(id);
+      /* each source keeps its own page cursor */
+      var pageFor = (opts.pages && opts.pages[id]) || page;
       if (!spec) return Promise.resolve({ id: id, items: [], error: 'E_SOURCE: 未知来源' });
-      var call = query ? spec.search(ctx, query, page) : (spec.browse ? spec.browse(ctx, page) : spec.search(ctx, query, page));
+      var call = query ? spec.search(ctx, query, pageFor) : (spec.browse ? spec.browse(ctx, pageFor) : spec.search(ctx, query, pageFor));
       return Promise.resolve()
         .then(function () { return call; })
         .then(function (res) {

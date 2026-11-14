@@ -114,6 +114,9 @@
     page: 1,
     query: '',
     items: [],
+    seen: {},
+    pages: {},
+    exhausted: {},
     results: {},
     queue: [],
     scanning: false,
@@ -212,7 +215,9 @@
    * search, a click narrows the grid without asking any site again. */
   function renderFilters() {
     var bar = $('filters');
-    var results = (App.results && App.results.results) || [];
+    var results = E.sourceInfo().map(function (s) {
+      return { id: s.id, label: s.label, items: App.items.filter(function (it) { return it.source === s.id; }) };
+    });
     var total = App.items.length;
     if (!total) { bar.hidden = true; bar.textContent = ''; return; }
     bar.hidden = false;
@@ -345,12 +350,7 @@
     if (App.items.length && !list.length) $('blank').textContent = '这个来源这次没有结果。';
   }
 
-  function appendItems(list) {
-    var grid = $('grid');
-    var base = App.items.length - list.length;
-    list.forEach(function (item, i) { grid.appendChild(makeCard(item, base + i)); });
-    if (!base) document.documentElement.dataset.hasResults = 'true';
-  }
+
 
   function requestCover(url, img, referer) {
     if (!url) return;
@@ -517,16 +517,37 @@
     $('blank').hidden = true;
     var active = E.sourceInfo().map(function (s) { return s.id; }).filter(function (id) { return !App.disabled[id]; });
     if (only) active = [only];
-    active.forEach(function (id) { setSiteState(id, 'busy', 0); });
+
+    /* Each source keeps its own page cursor: they paginate at different sizes,
+     * and one of them (Xpicvid) only reacts to a page number on its result URL. */
+    var pages = {};
+    if (!append) {
+      active.forEach(function (id) { pages[id] = 1; });
+    } else {
+      active.forEach(function (id) {
+        if (App.exhausted[id]) return;
+        pages[id] = (App.pages[id] || 1) + 1;
+      });
+      if (!Object.keys(pages).length) { App.scanning = false; return; }
+    }
+
+    active.forEach(function (id) { if (pages[id]) setSiteState(id, 'busy', 0); });
     $('tally').textContent = '检索中';
 
     try {
       var res = await E.searchAll(ctx, {
-        query: query, sources: active, page: page || 1,
+        query: query, sources: Object.keys(pages), pages: pages,
         limit: Math.max(1, parseInt(App.settings.perSource, 10) || 20)
       });
-      App.page = page || 1;
-      var merged = [];
+      if (!append) {
+        App.items = [];
+        App.seen = {};
+        App.exhausted = {};
+        App.pages = {};
+        App.filter = null;
+        App.kind = null;
+      }
+      var fresh = [];
       var failed = 0;
       res.results.forEach(function (r) {
         if (r.error) {
@@ -534,25 +555,31 @@
           setSiteState(r.id, 'error', 0);
           var siteEl = document.querySelector('.site[data-id="' + r.id + '"]');
           if (siteEl) siteEl.title = r.error;
-        } else {
-          setSiteState(r.id, r.items.length ? 'idle' : 'empty', r.items.length);
-          merged = merged.concat(r.items);
+          return;
         }
+        var kept = r.items.filter(function (it) { return !App.seen[it.uid]; });
+        if (append && r.items.length && !kept.length) App.exhausted[r.id] = true;
+        if (!r.hasMore) App.exhausted[r.id] = true;
+        kept.forEach(function (it) { App.seen[it.uid] = 1; });
+        fresh = fresh.concat(kept);
+        setSiteState(r.id, r.items.length ? 'idle' : 'empty', r.items.length);
       });
-      App.items = append ? App.items.concat(merged) : merged;
-      if (!append) { App.filter = null; App.kind = null; }
+      Object.keys(pages).forEach(function (id) { App.pages[id] = pages[id]; });
+      App.items = App.items.concat(fresh);
       App.results = res;
-      renderItems(!append);
+      renderItems(true);
       renderFilters();
-      if (append) appendItems(merged);
       var shown = App.items.length;
       $('tally').textContent = shown ? shown + (failed ? ' · ' + failed + ' 站未响应' : '') : '0';
-      $('more').hidden = shown < 8;
+      var more = Object.keys(pages).some(function (id) { return !App.exhausted[id]; });
+      $('more').hidden = shown < 8 || !more;
       if (!shown) {
         $('blank').textContent = failed
-          ? '这些站点没有响应。18comic 需要在设置里填 cf_clearance，其余检查网络与 cookie。'
-          : '没有命中。换一个 tag，或把这个站点头像关掉再试其它五站。';
+          ? '这些站点没有响应：先在设置里点“测试禁漫”，其余检查网络与 cookie。'
+          : '没有命中。换一个 tag，或把底部某个站点关掉再试其它站。';
         $('blank').hidden = false;
+      } else if (append && !fresh.length) {
+        $('tally').textContent = shown + ' · 没有更多了';
       }
     } catch (e) {
       $('blank').textContent = String(e && e.message ? e.message : e);

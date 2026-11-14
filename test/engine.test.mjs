@@ -352,3 +352,31 @@ test('without a key the fallback says so instead of failing silently', async () 
     /E_NO_KEY/
   );
 });
+
+
+test('searchAll gives every source its own page cursor', async () => {
+  const seen = {};
+  const ctx = {
+    get: async (url) => {
+      if (url.includes('rule34.us')) seen.r34 = url; else seen.ahri = url;
+      return { status: 200, body: '', headers: {} };
+    },
+    post: async () => ({ status: 200, body: '', headers: {} })
+  };
+  await engine.searchAll(ctx, { query: 'x', sources: ['rule34us', 'ahri'], pages: { rule34us: 2, ahri: 3 } });
+  assert.match(seen.r34, /pid=1\b/, 'rule34 page 2 is pid=1');
+  assert.match(seen.ahri, /page=3\b/, 'ahri uses its own page number');
+});
+
+test('xpicvid search reuses the searchid url for later pages', async () => {
+  const spec = engine.getSource('niacg');
+  const calls = [];
+  const ctx = {
+    post: async () => ({ status: 200, url: 'https://www.niacg.com/e/search/result/?searchid=1550668', body: '', headers: {} }),
+    get: async (url) => { calls.push(url); return { status: 200, body: '', headers: {} }; }
+  };
+  await spec.search(ctx, 'soul', 1);
+  await spec.search(ctx, 'soul', 2);
+  assert.equal(calls.length, 1);
+  assert.match(calls[0], /searchid=1550668&page=2/);
+});
