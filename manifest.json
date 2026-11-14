@@ -2,7 +2,7 @@
   "id": "app.nous.dawn-comic-downloader",
   "name": "破晓漫画下载器",
   "description": "DawnComicDownloader：六个图库站点的文字与图片检索、带元信息的结果列表，以及按编号归档的下载队列。",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "api": "1.3",
   "requiresHost": "1.2.0",
   "author": {
@@ -65,6 +65,14 @@
     }
   },
   "changelog": [
+    {
+      "version": "1.1.2",
+      "publishedAt": "2026-11-14",
+      "changes": [
+        "修复 Pixiv 登录窗口“还没登录就自动关闭”：Pixiv 在登录前就下发 PHPSESSID，宿主见到必需 Cookie 即关窗。现在同时要求 login_keep（窗口内勾选「ログイン状態を保持」后才会出现），并把这句写进界面提示。",
+        "新增封面保存：卡片右下角出现下载图标，点击把该封面存到 <下载目录>\\_covers\\<来源>-<id>.<扩展名>，带 Referer 与当前 UA，结果以底部提示回报（成功显示大小，失败显示原因）。"
+      ]
+    },
     {
       "version": "1.1.1",
       "publishedAt": "2026-11-14",

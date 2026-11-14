@@ -281,6 +281,8 @@
     document.documentElement.dataset.hasResults = 'false';
   }
   function makeCard(item, i) {
+    var wrap = document.createElement('div');
+    wrap.className = 'card-wrap';
     var card = document.createElement('button');
     card.type = 'button';
     card.className = 'card';
@@ -298,7 +300,21 @@
     if (item.duration) card.querySelector('.badge').textContent = item.duration;
     card.addEventListener('click', function () { togglePick(item, card); });
     requestCover(item.cover, card.querySelector('img'), item.url);
-    return card;
+
+    if (item.cover) {
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'cover-save';
+      save.title = '保存封面';
+      save.setAttribute('aria-label', '保存封面');
+      save.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10m-4-4 4 4 4-4M5 19h14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+      save.addEventListener('click', function (e) { e.stopPropagation(); saveCover(item); });
+      wrap.appendChild(card);
+      wrap.appendChild(save);
+      return wrap;
+    }
+    wrap.appendChild(card);
+    return wrap;
   }
 
   function renderItems(reset) {
@@ -834,13 +850,13 @@
   async function passPixivLogin() {
     var status = $('pixivStatus');
     if (!window.NousPlugin) { status.textContent = '只有正式宿主能开登录窗口'; return; }
-    status.textContent = '已打开窗口，登录并在设置里开启 R-18 后会自动保存';
+    status.textContent = '窗口已打开：登录时勾选「ログイン状態を保持」，并在账号设置里开启 R-18；两者齐了窗口才会关闭';
     try {
       var res = await window.NousPlugin.request('runtime.webLogin', {
         url: 'https://www.pixiv.net/',
         domains: ['pixiv.net', 'www.pixiv.net'],
         cookieUrls: ['https://www.pixiv.net/', 'https://www.pixiv.net/setting_user.php'],
-        requiredCookies: [['PHPSESSID']],
+        requiredCookies: [['PHPSESSID'], ['login_keep']],
         userAgents: { 'windows-x64': E.currentUserAgent() },
         urls: { 'windows-x64': 'https://www.pixiv.net/' }
       }, { timeoutMs: 600000 });
@@ -873,6 +889,37 @@
     } catch (err) {
       return 'R-18 状态未知';
     }
+  }
+
+
+  /* Saves one cover next to the downloads: <root>\\_covers\\<source>-<id>.<ext>. */
+  async function saveCover(item) {
+    try {
+      var root = await ensureRoot();
+      var dir = root.replace(/[\\/]+$/, '') + '\\_covers';
+      await Host.invoke('fs.mkdirs', { path: dir });
+      var ext = E.extensionOf(item.cover, 'jpg');
+      var name = E.safeName(item.source + '-' + item.id, 40) + '.' + ext;
+      var got = await Host.invoke('http.download', {
+        url: item.cover,
+        path: dir + '\\' + name,
+        headers: { 'User-Agent': E.currentUserAgent(), Referer: item.url || '' },
+        skipExisting: false,
+        timeoutMs: 60000
+      });
+      toast('封面已保存 ' + name + '（' + Math.round(got.bytes / 1024) + ' KB）');
+    } catch (err) {
+      toast('封面保存失败：' + String(err && err.message ? err.message : err).slice(0, 70));
+    }
+  }
+
+  function toast(message) {
+    var el = $('toast');
+    if (!el) return;
+    el.textContent = message;
+    el.hidden = false;
+    clearTimeout(toast.timer);
+    toast.timer = setTimeout(function () { el.hidden = true; }, 2600);
   }
 
   function commitRoot(path) {
