@@ -531,21 +531,34 @@
     return { path: path, bytes: buffer.byteLength };
   }
 
-  /* One host request may not exceed 1 MiB, so a decoded page is written in
-   * 384 KiB chunks: first call truncates, the rest append. */
+  /* The host rejects a single request over 1 MiB, and it counts the JSON as
+   * UTF-16, so an ASCII base64 of 512 KiB already weighs 1 MiB. 128 KiB of
+   * bytes (≈171 KiB of base64 ≈342 KiB UTF-16) stays well clear of the line
+   * even with the envelope. First chunk truncates, the rest append. */
   async function writeBytes(path, bytes) {
-    var chunk = 384 * 1024;
+    var chunk = 128 * 1024;
     var offset = 0;
     var first = true;
-    while (offset < bytes.length) {
-      var slice = bytes.subarray(offset, Math.min(offset + chunk, bytes.length));
-      await Host.invoke('file.writeBase64', {
-        path: path,
-        base64: E.bytesToBase64(slice),
-        append: !first
-      });
-      first = false;
-      offset += chunk;
+    try {
+      while (offset < bytes.length) {
+        var slice = bytes.subarray(offset, Math.min(offset + chunk, bytes.length));
+        var b64 = E.bytesToBase64(slice);
+        var attempt = 0;
+        for (;;) {
+          try {
+            await Host.invoke('file.writeBase64', { path: path, base64: b64, append: !first });
+            break;
+          } catch (err) {
+            if (++attempt >= 3) throw err;
+            await new Promise(function (r) { setTimeout(r, 220 * attempt); });
+          }
+        }
+        first = false;
+        offset += chunk;
+      }
+    } catch (err) {
+      await Host.invoke('fs.delete', { path: path }).catch(function () {});
+      throw err;
     }
   }
 
