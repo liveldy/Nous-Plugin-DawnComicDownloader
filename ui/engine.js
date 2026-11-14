@@ -1289,13 +1289,28 @@
   }
 
   function identifyImage(ctx, opts) {
-    var primary = opts.apiKey ? sauceNao(ctx, opts) : Promise.reject(new Error('E_NO_KEY: 未设置 SauceNAO API Key'));
+    var firstErr = null;
+    var primary = opts.apiKey
+      ? sauceNao(ctx, opts).catch(function (err) { firstErr = err; return null; })
+      : Promise.resolve(null);
     return primary
-      .catch(function (err) { return iqdb(ctx, opts).then(function (list) { return list; }).catch(function () { throw err; }); })
+      .then(function (list) {
+        if (list) return list;
+        return iqdb(ctx, opts).catch(function (err) {
+          firstErr = firstErr || err;
+          return [];
+        });
+      })
       .then(function (matches) {
-        return matches
+        var hits = (matches || [])
           .filter(function (m) { return m.similarity >= (opts.minSimilarity || 55); })
           .sort(function (a, b) { return b.similarity - a.similarity; });
+        if (hits.length) return hits;
+        if (!opts.apiKey) {
+          throw new Error('E_NO_KEY: 未配置 SauceNAO API Key，IQDB 也没有返回可用结果；在设置里填一个免费 key 可显著提高识别率');
+        }
+        if (firstErr) throw firstErr;
+        return [];
       });
   }
 

@@ -1030,24 +1030,49 @@
 
   /* ---------------------------------------------------------- image mode */
 
+  /* A dropped screenshot can be several megabytes, and the host refuses a
+   * request over 1 MiB — the image travels inside one. So it is re-encoded in
+   * the page: longest side 1024, JPEG, quality stepped down until the payload
+   * fits. This also converts WebP/AVIF into a format both lookup services read. */
+  async function prepareQueryImage(file) {
+    var bitmap = await createImageBitmap(file);
+    var budget = 700 * 1024;
+    var maxSide = 1024;
+    var quality = 0.9;
+    var blob = null;
+    for (var attempt = 0; attempt < 6; attempt++) {
+      var scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
+      var w = Math.max(1, Math.round(bitmap.width * scale));
+      var h = Math.max(1, Math.round(bitmap.height * scale));
+      var canvas = makeCanvas(w, h);
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, w, h);
+      blob = await canvasToBlob(canvas, 'image/jpeg', quality);
+      if (blob.size <= budget) break;
+      if (quality > 0.55) quality -= 0.15;
+      else maxSide = Math.max(320, Math.round(maxSide * 0.75));
+    }
+    if (bitmap.close) bitmap.close();
+    var buf = await blob.arrayBuffer();
+    return { base64: E.bytesToBase64(new Uint8Array(buf)), mime: 'image/jpeg', ext: 'jpg', bytes: blob.size };
+  }
+
   async function identify(file) {
     var matches = $('matches');
     matches.textContent = '';
     var hint = $('hint');
     hint.textContent = '识别中';
     try {
-      var dataUrl = await readAsDataUrl(file);
-      var comma = dataUrl.indexOf(',');
-      var base64 = dataUrl.slice(comma + 1);
-      var mime = /^data:([^;]+)/.exec(dataUrl)[1];
+      var prep = await prepareQueryImage(file);
       var found = await E.identifyImage(ctx, {
-        base64: base64,
-        mime: mime,
-        ext: (mime.split('/')[1] || 'jpg').replace('jpeg', 'jpg'),
+        base64: prep.base64,
+        mime: prep.mime,
+        ext: prep.ext,
         apiKey: App.settings.sauce,
         minSimilarity: 50
       });
-      hint.textContent = found.length ? '挑一条回灌关键词' : '没有足够相似的结果';
+      hint.textContent = found.length
+        ? '挑一条回灌关键词（' + Math.round(prep.bytes / 1024) + ' KB 已缩放）'
+        : (App.settings.sauce ? '没有足够相似的结果' : '未配置 SauceNAO API Key，IQDB 也没有可用结果');
       found.forEach(function (m) {
         var row = document.createElement('div');
         row.className = 'match';
